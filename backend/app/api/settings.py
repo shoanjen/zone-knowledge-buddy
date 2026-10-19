@@ -1,13 +1,16 @@
 """M9 供应商管理（规格 §12.2，B2 批次交付部分）。"""
 
+import json
 
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
 from app.core.db import get_db
 from app.core.errors import (
+    EmbeddingLockedError,
     NotFoundError,
     ProviderActiveError,
     ProviderConfigError,
@@ -141,3 +144,70 @@ def get_active_provider(db: Session) -> LLMProvider:
     if row is None:
         raise ProviderConfigError("生效供应商已不存在，请重新 activate")
     return row
+
+
+def _load_setting(db: Session, key: str, default):
+    row = db.get(Setting, key)
+    if row is None:
+        return default
+    try:
+        return json.loads(row.value_json)
+    except Exception:  # noqa: BLE001
+        return default
+
+
+@router.get("")
+def get_settings_values(
+    _: User = Depends(get_current_user), db: Session = Depends(get_db)
+) -> dict:
+    return _settings_response(db)
+
+
+class SettingsUpdate(BaseModel):
+    generation_params: dict | None = None
+    embedding: dict | None = None
+
+
+@router.put("")
+def put_settings_values(
+    body: SettingsUpdate,
+    _: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    if body.generation_params is not None:
+        row = db.get(Setting, "generation_params")
+        if row is None:
+            db.add(Setting(key="generation_params",
+                           value_json=json.dumps(body.generation_params)))
+        else:
+            row.value_json = json.dumps(body.generation_params, ensure_ascii=False)
+        db.commit()
+
+    if body.embedding is not None:
+        current = _load_setting(db, "embedding", {})
+        if current.get("locked_at"):
+            raise EmbeddingLockedError(
+                "向量库已建立，更换 embedding 模型需清空全部文档后重建（V1 不支持自动重算）"
+            )
+        row = db.get(Setting, "embedding")
+        merged = {**current, **body.embedding, "locked_at": None}
+        if row is None:
+            db.add(Setting(key="embedding", value_json=json.dumps(merged, ensure_ascii=False)))
+        else:
+            row.value_json = json.dumps(merged, ensure_ascii=False)
+        db.commit()
+
+    return _settings_response(db)
+
+
+def _settings_response(db: Session) -> dict:
+    active = db.get(Setting, "active_provider_id")
+    embedding = _load_setting(db, "embedding", {})
+    return {
+        "active_provider_id": int(active.value_json) if active else None,
+        "generation_params": _load_setting(
+            db, "generation_params", {"extract": 0.2, "chat": 0.3, "report": 0.4}
+        ),
+        "embedding": embedding,
+        "embedding_locked": bool(embedding.get("locked_at")),
+    }

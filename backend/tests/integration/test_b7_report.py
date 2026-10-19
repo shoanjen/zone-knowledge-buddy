@@ -100,7 +100,10 @@ def test_report_generate_selfcontained_html(client, auth_headers, report_env, mo
     assert "季度销量" in html                      # 图表标题
     assert 'data-cite="d_RPT01:b1"' in html      # 引用折叠标记
     assert "IntersectionObserver" in html          # 目录滚动联动
-    assert "http://" not in html.replace("http://www.w3.org", "")  # 无外链（自包含）
+    # 无外链（自包含）：不加载任何 http(s) 外部资源；vendor 的 echarts 许可证注释文本不算资源引用
+    import re
+
+    assert not re.search(r'(?:src|href)\s*=\s*["\']https?://', html)
 
     # 下载响应头
     resp = client.get(f"/api/reports/{rid}/html?download=1", headers=auth_headers)

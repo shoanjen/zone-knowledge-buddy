@@ -20,3 +20,11 @@ frontend/dist/
 
 # 系统
 .DS_Store
+
+# AutoClaw 运行目录与本地 skill 软链
+.zwork/
+.agents/
+
+# 本地 agent 配置与运行日志（软链指向本机 AutoClaw 目录，不应入库）
+.agents/
+.zwork/

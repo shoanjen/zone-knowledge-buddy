@@ -42,6 +42,9 @@ def _task_out(db: Session, t: AgentTask, detail: bool = False) -> dict:
                 select(AgentTaskStep).where(AgentTaskStep.task_id == t.id).order_by(AgentTaskStep.seq)
             ).all()
         ]
+        if t.status == "paused":
+            # 待确认任务附上草稿，供前端确认页展示/人工修订（规格 §12.1 confirm 可带修订稿）
+            out["draft"] = json.loads(t.draft_json or "{}")
     return out
 
 
