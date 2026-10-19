@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# 运行期数据（规格 §2.1）
+data/
+reports_output/
+
+# 环境与密钥
+.env
+.env.local
+
+# Node
+node_modules/
+frontend/dist/
+
+# 系统
+.DS_Store
