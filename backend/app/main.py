@@ -111,12 +111,16 @@ def create_app() -> FastAPI:
 
     register_error_handlers(app)
 
-    from app.api import auth, documents, search, settings
+    from app.api import auth, chat, documents, notes, reports, search, settings, tasks
 
     app.include_router(auth.router)
     app.include_router(settings.router)
     app.include_router(documents.router)
     app.include_router(search.router)
+    app.include_router(notes.router)
+    app.include_router(tasks.router)
+    app.include_router(chat.router)
+    app.include_router(reports.router)
 
     @app.get("/api/health", tags=["meta"])
     def health():

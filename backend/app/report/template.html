@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ title }}</title>
+<style>
+:root { --ink:#1a2233; --muted:#6b7280; --line:#e5e7eb; --brand:#2563eb; --bg:#f8fafc; }
+* { box-sizing: border-box; }
+body { margin:0; font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+       color:var(--ink); background:var(--bg); }
+.layout { display:flex; min-height:100vh; }
+aside { width:240px; flex:none; background:#fff; border-right:1px solid var(--line);
+        padding:24px 16px; position:sticky; top:0; height:100vh; overflow:auto; }
+aside h1 { font-size:16px; margin:0 0 4px; }
+aside .meta { font-size:12px; color:var(--muted); margin-bottom:16px; }
+aside a { display:block; padding:6px 10px; margin:2px 0; border-radius:6px;
+          color:var(--ink); text-decoration:none; font-size:13px; }
+aside a.active { background:#eff6ff; color:var(--brand); font-weight:600; }
+main { flex:1; max-width:860px; margin:0 auto; padding:40px 48px 96px; background:#fff; }
+main h2 { font-size:22px; border-bottom:1px solid var(--line); padding-bottom:8px; }
+main p, main li { line-height:1.8; font-size:15px; }
+table { border-collapse:collapse; margin:12px 0; }
+td, th { border:1px solid var(--line); padding:6px 12px; font-size:14px; }
+sup.cite { color:var(--brand); cursor:pointer; font-size:12px; margin:0 1px; }
+.cite-detail { display:none; margin:8px 0; padding:10px 12px; background:#f0f9ff;
+               border-left:3px solid var(--brand); font-size:13px; color:#334155;
+               border-radius:0 6px 6px 0; }
+.cite-detail.show { display:block; }
+.cite-detail .src { color:var(--muted); font-size:12px; margin-bottom:4px; }
+.chart-box { margin:20px 0; border:1px solid var(--line); border-radius:10px; padding:12px; }
+.chart-box .chart { width:100%; height:340px; }
+footer { margin-top:48px; font-size:12px; color:var(--muted); }
+@media print { aside { display:none; } main { padding:0; } }
+</style>
+<script>{{ echarts_js }}</script>
+</head>
+<body>
+<div class="layout">
+  <aside>
+    <h1>{{ title }}</h1>
+    <div class="meta">{{ intent }}<br>{{ generated_at }}</div>
+    {% for s in sections %}
+    <a href="#sec-{{ s.no }}" data-target="sec-{{ s.no }}">{{ s.no }}. {{ s.heading }}</a>
+    {% endfor %}
+  </aside>
+  <main>
+    <h1 style="font-size:28px;">{{ title }}</h1>
+    {% for s in section_htmls %}
+    <section id="sec-{{ s.no }}">
+      <h2>{{ s.no }}. {{ s.heading }}</h2>
+      <div class="content">{{ s.html }}</div>
+      {% if loop.first and charts %}
+        {% for c in charts %}
+        <div class="chart-box"><div class="chart" data-option-json='{{ chart_option_jsons[loop.index0] | replace("'", "&#39;") }}'></div>
+          <div style="font-size:12px;color:var(--muted);">{{ c.title }}</div></div>
+        {% endfor %}
+      {% endif %}
+    </section>
+    {% endfor %}
+    <footer>由 zone-knowledge-buddy 生成 · 引用可点击核验原文</footer>
+  </main>
+</div>
+<script>
+var CITEDATA = {{ citation_json }};
+document.querySelectorAll("sup.cite").forEach(function(sup){
+  sup.addEventListener("click", function(){
+    var key = sup.getAttribute("data-cite");
+    var box = document.querySelector('.cite-detail[data-key="' + key + '"]');
+    if (box) { box.classList.toggle("show"); return; }
+    var d = CITEDATA.find(function(c){ return c.doc_id + ":" + c.block_id === key; });
+    box = document.createElement("div");
+    box.className = "cite-detail show";
+    box.setAttribute("data-key", key);
+    box.innerHTML = d && d.text
+      ? '<div class="src">来源 ' + key + (d.missing ? '（源文档已删除）' : '') + '</div>' + d.text
+      : '<div class="src">来源 ' + key + '</div>原文不可用';
+    sup.closest(".content, section").appendChild(box);
+  });
+});
+document.querySelectorAll(".chart").forEach(function(el){
+  var opt = el.getAttribute("data-option-json");
+  if (window.echarts) { window.echarts.init(el).setOption(JSON.parse(opt)); }
+});
+var links = document.querySelectorAll("aside a");
+var obs = new IntersectionObserver(function(entries){
+  entries.forEach(function(e){
+    if (e.isIntersecting) {
+      links.forEach(function(a){ a.classList.toggle("active", a.getAttribute("href") === "#" + e.target.id); });
+    }
+  });
+}, { rootMargin: "-30% 0px -60% 0px" });
+document.querySelectorAll("section[id]").forEach(function(sec){ obs.observe(sec); });
+</script>
+</body>
+</html>

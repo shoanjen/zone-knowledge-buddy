@@ -17,8 +17,8 @@ def wired(client, db_engine, monkeypatch, tmp_path):
     import app.api.documents as docs_api
     import app.parsing.dispatcher as dispatcher
     import app.rag.pipeline as pipeline
-    import app.rag.store as store
     import app.rag.service as service
+    import app.rag.store as store
 
     TestSession = sessionmaker(bind=db_engine, autoflush=False, expire_on_commit=False)
     monkeypatch.setattr(dispatcher, "SessionLocal", TestSession)
