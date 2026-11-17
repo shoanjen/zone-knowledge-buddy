@@ -176,6 +176,51 @@ def test_paused_confirm_flow(client, auth_headers, seeded, monkeypatch):
     assert client.get(f"/api/tasks/{tid2}", headers=auth_headers).json()["error"] == "user_rejected"
 
 
+def test_paused_confirm_reuses_note_draft(client, auth_headers, seeded, monkeypatch):
+    """回归：note.write 已落库时，confirm 不得再插一条同 task 笔记。"""
+    gw = FakeGateway(list(HAPPY_SCRIPT))
+    _patch_gateway(monkeypatch, gw)
+    resp = client.post(
+        "/api/notes/generate",
+        json={"doc_ids": [seeded["doc_id"]], "intent": "整理", "confirm_required": True},
+        headers=auth_headers,
+    )
+    task_id = resp.json()["task_id"]
+    detail = client.get(f"/api/tasks/{task_id}", headers=auth_headers).json()
+    assert detail["status"] == "paused", detail
+    assert client.get("/api/notes", headers=auth_headers).json()["total"] == 1
+
+    resp = client.post(
+        f"/api/tasks/{task_id}/confirm", json={"approve": True}, headers=auth_headers
+    )
+    assert resp.status_code == 200 and resp.json()["status"] == "done", resp.text
+    notes = client.get("/api/notes", headers=auth_headers).json()
+    assert notes["total"] == 1, notes
+    note = client.get(f"/api/notes/{notes['items'][0]['id']}", headers=auth_headers).json()
+    assert note["task_id"] == task_id
+    assert "成本笔记" in note["content_md"]
+
+
+def test_reject_paused_note_removes_draft(client, auth_headers, seeded, monkeypatch):
+    """回归：拒绝草稿后不得把 note.write 的产出留在笔记列表。"""
+    gw = FakeGateway(list(HAPPY_SCRIPT))
+    _patch_gateway(monkeypatch, gw)
+    resp = client.post(
+        "/api/notes/generate",
+        json={"doc_ids": [seeded["doc_id"]], "intent": "整理", "confirm_required": True},
+        headers=auth_headers,
+    )
+    task_id = resp.json()["task_id"]
+    assert client.get(f"/api/tasks/{task_id}", headers=auth_headers).json()["status"] == "paused"
+    assert client.get("/api/notes", headers=auth_headers).json()["total"] == 1
+
+    resp = client.post(
+        f"/api/tasks/{task_id}/confirm", json={"approve": False}, headers=auth_headers
+    )
+    assert resp.json()["status"] == "failed"
+    assert client.get("/api/notes", headers=auth_headers).json()["total"] == 0
+
+
 def test_loop_detection(client, auth_headers, seeded, monkeypatch):
     same_call = {"type": "tool", "thought": "again", "tool": "kb.search",
                  "args": {"query": "成本"}}

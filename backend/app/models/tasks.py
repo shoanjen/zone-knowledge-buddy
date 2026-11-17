@@ -5,7 +5,7 @@ from app.core.db import Base
 from app.core.ids import new_task_id, utc_now_iso
 
 TASK_STATUS = ("pending", "planning", "running", "reflecting", "paused", "done", "failed", "cancelled")
-TASK_TYPES = ("note.generate", "report.generate")
+TASK_TYPES = ("note.generate", "report.generate", "podcast.generate")
 STEP_TYPES = ("thought", "tool", "observation", "reflection")
 
 

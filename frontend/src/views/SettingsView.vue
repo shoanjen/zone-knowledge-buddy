@@ -30,6 +30,18 @@ const embeddingTypeLabel = computed(() => {
   return EMBEDDING_TYPES[t] || t || '—'
 })
 
+// 生成参数是否有改动（按两位小数比较，规避滑块浮点步进误差）；仅控制保存按钮可点性
+const paramsDirty = computed(() => {
+  const p = settings.settings.generation_params || {}
+  const src = [
+    p.extract ?? DEFAULT_PARAMS.extract,
+    p.chat ?? DEFAULT_PARAMS.chat,
+    p.report ?? DEFAULT_PARAMS.report,
+  ]
+  const form = [paramForm.extract, paramForm.chat, paramForm.report]
+  return form.some((v, i) => Number(v).toFixed(2) !== Number(src[i]).toFixed(2))
+})
+
 function syncForm() {
   const p = settings.settings.generation_params || {}
   paramForm.extract = p.extract ?? DEFAULT_PARAMS.extract
@@ -112,56 +124,55 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="settings-page">
+  <div class="page settings-page">
     <div class="page-head">
-      <h2 class="page-title">设置</h2>
-      <p class="page-sub">模型供应商、生成参数、向量模型与数据管理</p>
+      <div>
+        <h2 class="page-title">设置</h2>
+        <p class="page-sub">模型供应商、生成参数、向量模型与数据管理</p>
+      </div>
     </div>
 
-    <el-card shadow="hover" class="section-card">
+    <el-card class="section-card">
       <template #header>
-        <div class="card-head"><span>模型供应商</span></div>
+        <div class="card-head">
+          <span>模型供应商</span>
+        </div>
       </template>
       <ProviderSwitch />
     </el-card>
 
-    <el-card shadow="hover" class="section-card">
+    <el-card class="section-card">
       <template #header>
         <div class="card-head"><span>生成参数</span></div>
       </template>
       <div class="param-row">
-        <div class="param-head">
-          <span class="param-name">信息抽取（extract）</span>
-          <span class="param-value">{{ paramForm.extract.toFixed(2) }}</span>
-        </div>
-        <el-slider v-model="paramForm.extract" :min="0" :max="1" :step="0.05" />
+        <span class="param-label">信息抽取（extract）</span>
+        <el-slider v-model="paramForm.extract" :min="0" :max="1" :step="0.05" class="param-slider" />
+        <span class="param-value tnum">{{ paramForm.extract.toFixed(2) }}</span>
       </div>
       <div class="param-row">
-        <div class="param-head">
-          <span class="param-name">问答（chat）</span>
-          <span class="param-value">{{ paramForm.chat.toFixed(2) }}</span>
-        </div>
-        <el-slider v-model="paramForm.chat" :min="0" :max="1" :step="0.05" />
+        <span class="param-label">问答（chat）</span>
+        <el-slider v-model="paramForm.chat" :min="0" :max="1" :step="0.05" class="param-slider" />
+        <span class="param-value tnum">{{ paramForm.chat.toFixed(2) }}</span>
       </div>
       <div class="param-row">
-        <div class="param-head">
-          <span class="param-name">报告（report）</span>
-          <span class="param-value">{{ paramForm.report.toFixed(2) }}</span>
-        </div>
-        <el-slider v-model="paramForm.report" :min="0" :max="1" :step="0.05" />
+        <span class="param-label">报告（report）</span>
+        <el-slider v-model="paramForm.report" :min="0" :max="1" :step="0.05" class="param-slider" />
+        <span class="param-value tnum">{{ paramForm.report.toFixed(2) }}</span>
       </div>
       <div class="section-foot">
-        <span class="muted">温度越低输出越稳定，越高越发散</span>
-        <el-button type="primary" :loading="savingParams" @click="saveParams">保存</el-button>
+        <span class="hint">温度越低输出越稳定，越高越发散</span>
+        <el-button type="primary" :loading="savingParams" :disabled="!paramsDirty" @click="saveParams">
+          保存
+        </el-button>
       </div>
     </el-card>
 
-    <el-card shadow="hover" class="section-card">
+    <el-card class="section-card">
       <template #header>
         <div class="card-head">
           <span>向量模型</span>
-          <el-tag v-if="embeddingLocked" type="danger" size="small">已锁定（向量库已建立）</el-tag>
-          <el-tag v-else type="success" size="small">建库前可修改</el-tag>
+          <el-tag v-if="embeddingLocked" type="danger" effect="plain" size="small">已锁定</el-tag>
         </div>
       </template>
 
@@ -172,60 +183,43 @@ onMounted(async () => {
         </div>
         <div class="info-item">
           <div class="info-label">服务地址</div>
-          <div class="info-value">{{ settings.settings.embedding?.base_url || '—' }}</div>
+          <div class="info-value info-mono">{{ settings.settings.embedding?.base_url || '—' }}</div>
         </div>
         <div class="info-item">
           <div class="info-label">模型</div>
-          <div class="info-value">{{ settings.settings.embedding?.model || '—' }}</div>
+          <div class="info-value info-mono">{{ settings.settings.embedding?.model || '—' }}</div>
         </div>
       </div>
 
-      <el-alert
-        v-if="embeddingLocked"
-        class="section-alert"
-        type="warning"
-        :closable="false"
-        show-icon
-        title="向量库已建立，向量模型已锁定；如需更换，需先清空全部文档后重建。"
-      />
+      <p v-if="embeddingLocked" class="hint lock-hint">
+        向量库已建立，向量模型已锁定；如需更换，需先清空全部文档后重建。
+      </p>
       <template v-else>
-        <el-alert
-          class="section-alert"
-          type="info"
-          :closable="false"
-          show-icon
-          title="尚未建立向量库，仍可调整以下配置；首条向量写入后将自动锁定。"
-        />
-        <el-form label-position="top" @submit.prevent="saveEmbedding">
-          <el-row :gutter="12">
-            <el-col :xs="24" :md="12">
-              <el-form-item label="服务地址（Base URL）">
-                <el-input v-model="embeddingForm.base_url" placeholder="例如 http://127.0.0.1:11434/v1" />
-              </el-form-item>
-            </el-col>
-            <el-col :xs="24" :md="12">
-              <el-form-item label="模型">
-                <el-input v-model="embeddingForm.model" placeholder="例如 bge-m3" />
-              </el-form-item>
-            </el-col>
-          </el-row>
+        <p class="hint lock-hint">尚未建立向量库，仍可调整以下配置；首条向量写入后将自动锁定。</p>
+        <el-form label-position="top" class="embed-form" @submit.prevent="saveEmbedding">
+          <el-form-item label="服务地址（Base URL）">
+            <el-input v-model="embeddingForm.base_url" placeholder="例如 http://127.0.0.1:11434/v1" />
+          </el-form-item>
+          <el-form-item label="模型">
+            <el-input v-model="embeddingForm.model" placeholder="例如 bge-m3" />
+          </el-form-item>
         </el-form>
         <div class="section-foot">
-          <span class="muted">建库前仅可调整服务地址与模型</span>
-          <el-button type="primary" :loading="savingEmbedding" @click="saveEmbedding">保存</el-button>
+          <span class="hint">建库前仅可调整服务地址与模型</span>
+          <el-button plain :loading="savingEmbedding" @click="saveEmbedding">保存</el-button>
         </div>
       </template>
     </el-card>
 
-    <el-card shadow="hover" class="section-card">
+    <el-card class="section-card">
       <template #header>
         <div class="card-head"><span>数据管理</span></div>
       </template>
-      <p class="muted data-desc">
+      <p class="hint data-desc">
         备份内容包含数据库、向量库与全部原始文件，导出为 zip
         压缩包。恢复为手动操作：停止服务后用备份内容替换 data 目录，再重新启动。
       </p>
-      <el-button type="primary" :loading="exporting" :icon="Download" @click="exportBackup">
+      <el-button type="primary" plain :loading="exporting" :icon="Download" @click="exportBackup">
         导出备份 zip
       </el-button>
     </el-card>
@@ -234,53 +228,47 @@ onMounted(async () => {
 
 <style scoped>
 .settings-page {
-  max-width: 960px;
-  margin: 0 auto;
-}
-
-.page-title {
-  margin: 0;
-  font-size: 22px;
-}
-
-.page-sub {
-  margin: 4px 0 0;
-  color: #909399;
-  font-size: 13px;
+  display: flex;
+  flex-direction: column;
 }
 
 .section-card {
   margin-bottom: 16px;
 }
 
-.card-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 600;
+.section-card:last-child {
+  margin-bottom: 0;
 }
 
 .param-row {
-  margin-bottom: 4px;
-}
-
-.param-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-bottom: 4px;
+  gap: 14px;
 }
 
-.param-name {
-  font-size: 14px;
-  color: #303133;
+.param-row + .param-row {
+  margin-top: 14px;
+}
+
+.param-label {
+  width: 90px;
+  flex-shrink: 0;
+  font-size: 13px;
+  color: var(--fg);
+}
+
+.param-slider {
+  width: 260px;
+  flex-shrink: 0;
 }
 
 .param-value {
-  color: #409eff;
-  font-size: 14px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
+  width: 56px;
+  flex-shrink: 0;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--fg-strong);
 }
 
 .section-foot {
@@ -288,41 +276,52 @@ onMounted(async () => {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid #ebeef5;
-}
-
-.muted {
-  color: #909399;
-  font-size: 13px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
 }
 
 .info-grid {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px 32px;
-  margin-bottom: 12px;
+  gap: 12px 36px;
 }
 
 .info-label {
   margin-bottom: 4px;
-  color: #909399;
-  font-size: 13px;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .info-value {
-  color: #303133;
-  font-size: 14px;
+  color: var(--fg);
+  font-size: 12.5px;
   word-break: break-all;
 }
 
-.section-alert {
-  margin-bottom: 12px;
+.info-mono {
+  font-family: var(--font-mono);
+}
+
+.lock-hint {
+  margin: 14px 0 0;
+  line-height: 1.7;
+}
+
+.embed-form {
+  margin-top: 14px;
+}
+
+.embed-form :deep(.el-form-item) {
+  margin-bottom: 14px;
+}
+
+.embed-form :deep(.el-form-item__label) {
+  font-size: 13px;
 }
 
 .data-desc {
-  margin: 0 0 12px;
+  margin: 0 0 14px;
   line-height: 1.7;
 }
 </style>

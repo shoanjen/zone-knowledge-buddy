@@ -14,7 +14,6 @@ const MAX_SIZE_MB = 100
 const MAX_FILES = 20 // 与后端 kb_max_upload_files 一致
 
 const fileList = ref([])
-const rejects = ref([]) // 未入队文件提示：[{ name, reason }]
 const uploading = ref(false)
 
 const url = ref('')
@@ -42,17 +41,12 @@ function validateFile(raw) {
   return ''
 }
 
-// 文件加入队列时逐个校验：不合格的弹出提示并从队列移除（不入队）
+// 文件加入队列时逐个校验：不合格的移出队列并弹出提示（不入队）
 function onFileChange(file) {
   const reason = validateFile(file?.raw)
   if (!reason) return
   fileList.value = fileList.value.filter((f) => f.uid !== file.uid)
-  rejects.value.push({ name: file.name, reason })
   ElMessage.warning(`${file.name}：${reason}`)
-}
-
-function removeReject(index) {
-  rejects.value.splice(index, 1)
 }
 
 async function submitFiles() {
@@ -69,11 +63,18 @@ async function submitFiles() {
   try {
     const data = await store.upload(files)
     const docIds = (data.items || []).map((item) => item.doc_id).filter(Boolean)
+    const errors = data.errors || []
     fileList.value = []
-    rejects.value = []
     if (docIds.length) {
       emit('submitted', docIds)
       ElMessage.success(`已提交 ${docIds.length} 个文件，正在解析`)
+    }
+    if (errors.length) {
+      ElMessage.warning(
+        `${errors.length} 个文件未通过校验：${errors
+          .map((e) => `${e.filename}（${e.message}）`)
+          .join('；')}`,
+      )
     }
   } catch {
     // 失败提示由 http 拦截器统一弹出，保留队列便于重新提交
@@ -113,22 +114,12 @@ async function submitUrl() {
       accept=".pdf,.docx,.md,.xlsx"
       :on-change="onFileChange"
     >
-      <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
-      <div class="el-upload__text">将文件拖到此处，或<em>点击选择</em></div>
-      <template #tip>
-        <div class="el-upload__tip">
-          支持 .pdf / .docx / .md / .xlsx，单文件不超过 100MB，可多选，单次最多 20 个
-        </div>
-      </template>
-    </el-upload>
-
-    <div v-if="rejects.length" class="rejects">
-      <div v-for="(item, i) in rejects" :key="i" class="reject-item">
-        <span class="reject-name">{{ item.name }}</span>
-        <span class="reject-reason">{{ item.reason }}</span>
-        <el-button link type="danger" size="small" @click="removeReject(i)">移除提示</el-button>
+      <div class="drop-zone">
+        <el-icon :size="30" class="drop-icon"><UploadFilled /></el-icon>
+        <div class="drop-title">将文件拖到此处，或点击选择</div>
+        <div class="hint">支持 .pdf / .docx / .md / .xlsx，单文件不超过 100MB，可多选，单次最多 20 个</div>
       </div>
-    </div>
+    </el-upload>
 
     <el-button
       class="upload-btn"
@@ -150,9 +141,7 @@ async function submitUrl() {
         :disabled="urlSubmitting"
         @keyup.enter="submitUrl"
       />
-      <el-button type="primary" plain :loading="urlSubmitting" @click="submitUrl">
-        导入网页
-      </el-button>
+      <el-button plain :loading="urlSubmitting" @click="submitUrl">导入网页</el-button>
     </div>
   </div>
 </template>
@@ -170,40 +159,44 @@ async function submitUrl() {
   width: 100%;
 }
 
+/* 大虚线拖拽框：拖入 / hover 时边框与底色转向墨绿强调 */
 .uploader :deep(.el-upload-dragger) {
   width: 100%;
+  padding: 28px;
+  border: 1.5px dashed var(--border-strong);
+  border-radius: 12px;
+  background: var(--surface);
+  transition: border-color 0.2s ease, background-color 0.2s ease;
 }
 
-.uploader :deep(.el-icon--upload) {
-  font-size: 46px;
-  color: #c0c4cc;
-  margin-bottom: 8px;
+.uploader :deep(.el-upload-dragger:hover),
+.uploader :deep(.el-upload-dragger.is-dragover) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
 }
 
-.rejects {
-  margin-top: 10px;
-  padding: 8px 12px;
-  border: 1px solid #f3d19e;
-  border-radius: 4px;
-  background: #fdf6ec;
-}
-
-.reject-item {
+.drop-zone {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  line-height: 24px;
+  gap: 7px;
+  padding: 0 12px;
+  text-align: center;
 }
 
-.reject-name {
-  color: #303133;
-  word-break: break-all;
+.drop-icon {
+  color: var(--muted);
 }
 
-.reject-reason {
-  flex: 1;
-  color: #b88230;
+.drop-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fg-strong);
+}
+
+/* 已选文件列表（Element Plus 自动渲染在拖拽框下方） */
+.uploader :deep(.el-upload-list) {
+  margin-top: 10px;
 }
 
 .upload-btn {
@@ -211,11 +204,15 @@ async function submitUrl() {
 }
 
 .divider {
-  margin: 20px 0 16px;
+  margin: 16px 0 10px;
 }
 
 .url-row {
   display: flex;
   gap: 8px;
+}
+
+.url-row :deep(.el-input) {
+  flex: 1;
 }
 </style>

@@ -2,7 +2,7 @@
 
 import json
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -93,8 +93,8 @@ def _note_out(db: Session, n: Note, detail: bool = False) -> dict:
 
 @router.get("")
 def list_notes(
-    page: int = 1,
-    page_size: int = 20,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
     q: str = "",
     tag: str = "",
     _: User = Depends(get_current_user),

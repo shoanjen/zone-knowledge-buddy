@@ -25,6 +25,10 @@ def new_report_id() -> str:
     return new_id("r")
 
 
+def new_podcast_id() -> str:
+    return new_id("p")
+
+
 def new_task_id() -> str:
     return new_id("t")
 

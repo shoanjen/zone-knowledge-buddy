@@ -1,12 +1,24 @@
 <script setup>
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { Clock, DataAnalysis, Document, Notebook } from '@element-plus/icons-vue'
+import {
+  ArrowRight,
+  ChatDotRound,
+  DataAnalysis,
+  Document,
+  Files,
+  Notebook,
+} from '@element-plus/icons-vue'
 import { useDocumentsStore } from '../stores/documents'
 import { useNotesStore } from '../stores/notes'
 import { useReportsStore } from '../stores/reports'
 import { useTasksStore } from '../stores/tasks'
+import { listDocuments } from '../api/documents'
+import { listNotes } from '../api/notes'
+import { listReports } from '../api/reports'
+import { listTasks } from '../api/tasks'
 import ImportPanel from '../components/ImportPanel.vue'
+import GenerateDialog from '../components/GenerateDialog.vue'
 
 const router = useRouter()
 const documentsStore = useDocumentsStore()
@@ -17,19 +29,54 @@ const tasksStore = useTasksStore()
 // 与 tasks store 的 ACTIVE（轮询用，不含 paused）不同：工作台统计把「待确认」也算进行中
 const ACTIVE_STATUSES = ['pending', 'planning', 'running', 'reflecting', 'paused']
 
-const activeTaskCount = computed(
-  () => tasksStore.list.filter((t) => ACTIVE_STATUSES.includes(t.status)).length,
-)
+const counts = ref({ documents: 0, notes: 0, reports: 0, activeTasks: 0 })
 
-const stats = computed(() => [
-  { label: '文档总数', value: documentsStore.total, icon: Document, color: '#409eff', bg: '#ecf5ff' },
-  { label: '笔记总数', value: notesStore.total, icon: Notebook, color: '#67c23a', bg: '#f0f9eb' },
-  { label: '报告总数', value: reportsStore.total, icon: DataAnalysis, color: '#e6a23c', bg: '#fdf6ec' },
-  { label: '进行中任务数', value: activeTaskCount.value, icon: Clock, color: '#f56c6c', bg: '#fef0f0' },
+// 三步工作流：知识库 → 提问 → 产出
+const flow = computed(() => [
+  {
+    step: '01',
+    icon: Files,
+    title: '知识库',
+    desc: '导入 PDF / Word / Markdown / Excel 或网页，自动解析、切片与向量化',
+    metric: `${counts.value.documents} 篇文档`,
+    to: '/documents',
+  },
+  {
+    step: '02',
+    icon: ChatDotRound,
+    title: '智能问答',
+    desc: '就你的资料提问，回答只依据知识库生成、附可回溯引用',
+    metric: '随时开始',
+    to: '/chat',
+  },
+  {
+    step: '03',
+    icon: Notebook,
+    title: '智能产出',
+    desc: 'Agent 按你的意图，从文档提炼可溯源笔记与结构化报告',
+    metric: `笔记 ${counts.value.notes} · 报告 ${counts.value.reports}`,
+    to: '/assets',
+  },
 ])
 
-const recentNotes = computed(() => notesStore.list.slice(0, 5))
-const recentReports = computed(() => reportsStore.list.slice(0, 5))
+// 最近产出：笔记与报告合并时间线，带类型标记
+const recentOutputs = computed(() => {
+  const notes = notesStore.list.slice(0, 5).map((n) => ({
+    id: n.id,
+    kind: 'note',
+    title: n.title || '（无标题）',
+    time: n.updated_at,
+    to: `/notes/${n.id}`,
+  }))
+  const reports = reportsStore.list.slice(0, 5).map((r) => ({
+    id: r.id,
+    kind: 'report',
+    title: r.title || '（无标题）',
+    time: r.created_at,
+    to: `/reports/${r.id}/preview`,
+  }))
+  return [...notes, ...reports].sort((a, b) => String(b.time).localeCompare(String(a.time))).slice(0, 6)
+})
 
 function formatTime(value) {
   if (!value) return ''
@@ -49,165 +96,305 @@ async function refreshAll() {
   ])
 }
 
-onMounted(refreshAll)
+// 统计独立取数：不受文档/任务页当前筛选与分页影响
+async function refreshCounts() {
+  const [docs, notes, reports, tasks] = await Promise.allSettled([
+    listDocuments({ page: 1, page_size: 1 }),
+    listNotes({ page: 1, page_size: 1 }),
+    listReports({ page: 1, page_size: 1 }),
+    listTasks({ page: 1, page_size: 100 }),
+  ])
+  counts.value = {
+    documents: docs.status === 'fulfilled' ? docs.value.total : 0,
+    notes: notes.status === 'fulfilled' ? notes.value.total : 0,
+    reports: reports.status === 'fulfilled' ? reports.value.total : 0,
+    activeTasks:
+      tasks.status === 'fulfilled'
+        ? tasks.value.items.filter((t) => ACTIVE_STATUSES.includes(t.status)).length
+        : 0,
+  }
+}
+
+onMounted(() => {
+  refreshAll()
+  refreshCounts()
+})
+
+// ---- 上传后的下一步引导：基于刚导入的文档选择生成笔记 / 报告 ----
+const genVisible = ref(false)
+const genPreset = ref([])
+
+function onImported(docIds) {
+  refreshAll()
+  refreshCounts()
+  if (docIds && docIds.length) {
+    genPreset.value = docIds
+    genVisible.value = true
+  }
+}
 </script>
 
 <template>
-  <div class="workbench">
+  <div class="page workbench">
     <div class="page-head">
-      <h2 class="page-title">工作台</h2>
-      <p class="page-sub">概览知识库，导入新内容</p>
+      <div>
+        <h2 class="page-title">工作台</h2>
+        <p class="page-sub">从沉淀资料到提问，再到可溯源的产出</p>
+      </div>
+      <router-link v-if="counts.activeTasks" to="/tasks" class="active-chip">
+        <span class="pulse-dot" />
+        {{ counts.activeTasks }} 个任务进行中
+      </router-link>
     </div>
 
-    <el-row :gutter="12" class="stat-row">
-      <el-col v-for="s in stats" :key="s.label" :xs="12" :sm="12" :md="6">
-        <el-card shadow="hover" class="stat-card">
-          <div class="stat-body">
-            <span class="stat-icon" :style="{ color: s.color, background: s.bg }">
-              <el-icon :size="22"><component :is="s.icon" /></el-icon>
+    <!-- 三步工作流 -->
+    <div class="flow">
+      <template v-for="(f, i) in flow" :key="f.step">
+        <div
+          class="flow-card rise-in"
+          :class="'stagger-' + (i + 1)"
+          role="link"
+          :title="`前往${f.title}`"
+          @click="router.push(f.to)"
+        >
+          <div class="flow-top">
+            <span class="flow-step tnum">{{ f.step }}</span>
+            <span class="flow-icon-badge">
+              <el-icon :size="18"><component :is="f.icon" /></el-icon>
             </span>
-            <div class="stat-info">
-              <div class="stat-num">{{ s.value }}</div>
-              <div class="stat-label">{{ s.label }}</div>
-            </div>
           </div>
-        </el-card>
-      </el-col>
-    </el-row>
-
-    <el-card shadow="hover" class="block-card">
-      <template #header>
-        <div class="card-head"><span>导入文档</span></div>
+          <div class="flow-title">{{ f.title }}</div>
+          <p class="flow-desc">{{ f.desc }}</p>
+          <div class="flow-metric">
+            <span>{{ f.metric }}</span>
+            <el-icon :size="13"><ArrowRight /></el-icon>
+          </div>
+        </div>
+        <el-icon v-if="i < flow.length - 1" class="flow-arrow" :size="16"><ArrowRight /></el-icon>
       </template>
-      <ImportPanel @submitted="refreshAll" />
+    </div>
+
+    <!-- 导入入口 -->
+    <el-card class="block-card">
+      <template #header>
+        <div class="card-head">
+          <span>导入新资料</span>
+          <el-button link size="small" @click="router.push('/documents')">查看文档库</el-button>
+        </div>
+      </template>
+      <ImportPanel @submitted="onImported" />
     </el-card>
 
-    <el-row :gutter="12">
-      <el-col :xs="24" :md="12">
-        <el-card shadow="hover" class="block-card">
-          <template #header>
-            <div class="card-head">
-              <span>最近笔记</span>
-              <el-button link type="primary" @click="router.push('/notes')">查看全部</el-button>
-            </div>
-          </template>
-          <div v-loading="notesStore.loading" class="item-list">
-            <template v-if="recentNotes.length">
-              <div
-                v-for="n in recentNotes"
-                :key="n.id"
-                class="list-item"
-                @click="router.push(`/notes/${n.id}`)"
-              >
-                <span class="item-title">{{ n.title || '（无标题）' }}</span>
-                <span class="item-time">{{ formatTime(n.updated_at) }}</span>
-              </div>
-            </template>
-            <el-empty
-              v-else-if="!notesStore.loading"
-              description="暂无笔记，可从文档生成"
-              :image-size="60"
-            />
+    <!-- 最近产出（笔记 + 报告 合并时间线） -->
+    <el-card class="block-card">
+      <template #header>
+        <div class="card-head">
+          <span>最近产出</span>
+          <div class="head-links">
+            <el-button link size="small" @click="router.push('/assets?tab=notes')">笔记</el-button>
+            <el-button link size="small" @click="router.push('/assets?tab=reports')">报告</el-button>
           </div>
-        </el-card>
-      </el-col>
+        </div>
+      </template>
+      <div v-loading="notesStore.loading || reportsStore.loading" class="item-list">
+        <template v-if="recentOutputs.length">
+          <div v-for="o in recentOutputs" :key="o.kind + o.id" class="list-item" @click="router.push(o.to)">
+            <span class="kind-tag" :class="o.kind">{{ o.kind === 'note' ? '笔记' : '报告' }}</span>
+            <span class="item-title">{{ o.title }}</span>
+            <span class="item-time tnum">{{ formatTime(o.time) }}</span>
+          </div>
+        </template>
+        <el-empty
+          v-else-if="!notesStore.loading && !reportsStore.loading"
+          description="还没有产出：上传文档后按引导生成，或在文档库对某篇文档发起"
+          :image-size="60"
+        />
+      </div>
+    </el-card>
 
-      <el-col :xs="24" :md="12">
-        <el-card shadow="hover" class="block-card">
-          <template #header>
-            <div class="card-head">
-              <span>最近报告</span>
-              <el-button link type="primary" @click="router.push('/reports')">查看全部</el-button>
-            </div>
-          </template>
-          <div v-loading="reportsStore.loading" class="item-list">
-            <template v-if="recentReports.length">
-              <div
-                v-for="r in recentReports"
-                :key="r.id"
-                class="list-item"
-                @click="router.push(`/reports/${r.id}/preview`)"
-              >
-                <span class="item-title">{{ r.title || '（无标题）' }}</span>
-                <span class="item-time">{{ formatTime(r.created_at) }}</span>
-              </div>
-            </template>
-            <el-empty
-              v-else-if="!reportsStore.loading"
-              description="暂无报告，可从文档生成"
-              :image-size="60"
-            />
-          </div>
-        </el-card>
-      </el-col>
-    </el-row>
+    <!-- 上传后的下一步：选择生成笔记 / 报告（等待解析就绪后自动放行） -->
+    <GenerateDialog
+      v-model="genVisible"
+      :preset-doc-ids="genPreset"
+      title="资料已提交 · 想生成什么？"
+    />
   </div>
 </template>
 
 <style scoped>
-.workbench {
-  max-width: 1200px;
-  margin: 0 auto;
-}
-
-.page-title {
-  margin: 0;
-  font-size: 22px;
-}
-
-.page-sub {
-  margin: 4px 0 0;
-  color: #909399;
-  font-size: 13px;
-}
-
-.stat-row {
-  margin-bottom: 12px;
-}
-
-.stat-card {
-  margin-bottom: 12px;
-}
-
-.stat-body {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.stat-icon {
+/* ---------- 页头右侧：进行中任务 ---------- */
+.active-chip {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 44px;
-  height: 44px;
-  border-radius: 10px;
-  flex-shrink: 0;
-}
-
-.stat-num {
-  font-size: 24px;
+  gap: 8px;
+  padding: 6px 14px;
+  border: 1px solid var(--accent-border);
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 12.5px;
   font-weight: 600;
-  line-height: 1.2;
+  white-space: nowrap;
 }
 
-.stat-label {
-  margin-top: 2px;
-  color: #909399;
-  font-size: 13px;
+.pulse-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: pulse 1.6s ease infinite;
 }
 
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* ---------- 三步工作流 ---------- */
+.flow {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.flow-card {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  padding: 16px 18px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+  cursor: pointer;
+  transition: border-color 0.22s var(--ease-out), box-shadow 0.22s var(--ease-out),
+    transform 0.22s var(--ease-out);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* 悬停时的墨绿光晕描边（用伪元素避免影响布局） */
+.flow-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 1px var(--accent-border);
+  opacity: 0;
+  transition: opacity 0.22s var(--ease-out);
+  pointer-events: none;
+}
+
+.flow-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-float);
+}
+
+.flow-card:hover::before {
+  opacity: 1;
+}
+
+.flow-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.flow-step {
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  color: var(--faint);
+}
+
+.flow-icon-badge {
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background: var(--accent-grad);
+  color: #fff;
+  box-shadow: var(--accent-glow);
+  transition: transform 0.25s var(--ease-spring);
+}
+
+.flow-card:hover .flow-icon-badge {
+  transform: scale(1.08) rotate(-4deg);
+}
+
+.flow-title {
+  margin-top: 12px;
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--fg-strong);
+}
+
+.flow-desc {
+  margin: 6px 0 12px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--muted);
+  flex: 1;
+}
+
+.flow-metric {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--accent);
+  transition: gap 0.2s var(--ease-out);
+}
+
+.flow-card:hover .flow-metric {
+  gap: 6px;
+}
+
+.flow-arrow {
+  align-self: center;
+  flex-shrink: 0;
+  color: var(--faint);
+  animation: float-x 2.6s ease-in-out infinite;
+}
+
+@keyframes float-x {
+  0%,
+  100% {
+    transform: translateX(0);
+    opacity: 0.6;
+  }
+  50% {
+    transform: translateX(3px);
+    opacity: 1;
+  }
+}
+
+/* ---------- 区块卡 ---------- */
 .block-card {
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
 
 .card-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-weight: 600;
 }
 
+.head-links .el-button + .el-button {
+  margin-left: 8px;
+}
+
+/* ---------- 最近产出 ---------- */
 .item-list {
   min-height: 120px;
 }
@@ -216,8 +403,8 @@ onMounted(refreshAll)
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 8px 4px;
-  border-bottom: 1px dashed #ebeef5;
+  padding: 9px 2px;
+  border-bottom: 1px solid var(--border);
   cursor: pointer;
 }
 
@@ -225,8 +412,24 @@ onMounted(refreshAll)
   border-bottom: none;
 }
 
-.list-item:hover .item-title {
-  color: #409eff;
+.kind-tag {
+  flex-shrink: 0;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.kind-tag.note {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.kind-tag.report {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--muted);
 }
 
 .item-title {
@@ -236,11 +439,29 @@ onMounted(refreshAll)
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 14px;
+  font-weight: 500;
+  color: var(--fg);
+  transition: color 0.15s ease;
+}
+
+.list-item:hover .item-title {
+  color: var(--accent);
 }
 
 .item-time {
-  color: #909399;
+  flex-shrink: 0;
   font-size: 12px;
-  white-space: nowrap;
+  color: var(--muted);
+}
+
+/* 窄屏：流程卡纵向排列，箭头隐藏 */
+@media (max-width: 900px) {
+  .flow {
+    flex-direction: column;
+  }
+
+  .flow-arrow {
+    display: none;
+  }
 }
 </style>

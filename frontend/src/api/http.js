@@ -50,6 +50,10 @@ http.interceptors.response.use(
       localStorage.removeItem(USERNAME_KEY)
       if (!window.location.pathname.startsWith('/login')) {
         window.location.href = '/login'
+      } else {
+        // 登录页内的 401 = 账号密码错误（AUTH_INVALID），必须提示；
+        // 其他场景的会话过期提示由跳转后的登录页承担，避免重复弹窗。
+        ElMessage.error(body?.message || CODE_FALLBACK[body?.code] || '用户名或密码错误')
       }
       return Promise.reject(error)
     }

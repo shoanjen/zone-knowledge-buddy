@@ -63,7 +63,14 @@ async function handleActivate(p) {
 
 const editVisible = ref(false)
 const editSaving = ref(false)
-const editForm = reactive({ id: null, name: '', base_url: '', model: '', api_key: '' })
+const editForm = reactive({
+  id: null,
+  name: '',
+  base_url: '',
+  model: '',
+  api_key: '',
+  existingHint: null, // 已配置 Key 的掩码提示（不回传明文）
+})
 
 function openEdit(p) {
   editForm.id = p.id
@@ -71,6 +78,7 @@ function openEdit(p) {
   editForm.base_url = p.base_url || ''
   editForm.model = p.model || ''
   editForm.api_key = ''
+  editForm.existingHint = p.api_key_hint || null
   editVisible.value = true
 }
 
@@ -242,6 +250,11 @@ onMounted(() => {
             show-password
             placeholder="留空则保留原 Key"
           />
+          <div v-if="editForm.existingHint" class="key-hint">
+            <span class="key-dot" />已配置 Key：<code>{{ editForm.existingHint }}</code>
+            <span class="key-note">（留空保持不变；填写新 Key 将覆盖）</span>
+          </div>
+          <div v-else class="key-hint none">尚未配置 API Key</div>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -363,5 +376,41 @@ onMounted(() => {
   margin-top: 10px;
   padding-top: 8px;
   border-top: 1px dashed #ebeef5;
+}
+/* 已配置 Key 掩码提示 */
+.key-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 7px;
+  font-size: 12px;
+  color: var(--success);
+  line-height: 1.5;
+}
+
+.key-hint.none {
+  color: var(--faint);
+}
+
+.key-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--success);
+  flex-shrink: 0;
+}
+
+.key-hint code {
+  padding: 1px 7px;
+  border-radius: 5px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--fg);
+}
+
+.key-note {
+  color: var(--faint);
 }
 </style>

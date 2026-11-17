@@ -24,3 +24,5 @@ class ProviderOut(BaseModel):
     model: str
     is_active: bool
     has_api_key: bool
+    # 掩码提示（前 3 + 末 4），用于编辑框确认存的是哪把 Key；未配置为 null
+    api_key_hint: str | None = None

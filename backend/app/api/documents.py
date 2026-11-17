@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, Depends, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, UploadFile
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -71,18 +71,33 @@ def upload(
     _: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> dict:
+    """多文件上传：逐文件校验，成功入库、失败计入 errors（规格 §6.1）。
+
+    先读入并校验全部文件再落库，避免“后一个文件非法导致前一个已建文档
+    永久停在 pending”的孤儿；单文件非法仍返回 413/415。
+    """
     s = get_settings()
     if len(files) > s.kb_max_upload_files:
         raise ValidationError(f"单次最多上传 {s.kb_max_upload_files} 个文件")
-    items = []
+    prepared: list[tuple[str, str, bytes]] = []
+    errors: list[dict] = []
     for f in files:
         content = f.file.read()
-        ext = _check_upload(f.filename or "file", content)
-        doc = _create_doc(db, EXT_TO_TYPE[ext], f.filename or "file", Path(f.filename or "f").stem)
-        save_original(doc.id, f.filename or "file", content)
-        items.append({"doc_id": doc.id, "filename": f.filename, "status": doc.status})
+        try:
+            ext = _check_upload(f.filename or "file", content)
+            prepared.append((ext, f.filename or "file", content))
+        except (UploadFormatError, UploadTooLargeError) as e:
+            if len(files) == 1:
+                raise
+            errors.append({"filename": f.filename, "code": e.code, "message": e.message})
+
+    items = []
+    for ext, filename, content in prepared:
+        doc = _create_doc(db, EXT_TO_TYPE[ext], filename, Path(filename).stem)
+        save_original(doc.id, filename, content)
+        items.append({"doc_id": doc.id, "filename": filename, "status": doc.status})
         background.add_task(submit, run_document_pipeline, doc.id)
-    return {"items": items}
+    return {"items": items, "errors": errors}
 
 
 @router.post("/url", status_code=202)
@@ -118,8 +133,8 @@ def _doc_out(d: Document) -> dict:
 
 @router.get("")
 def list_documents(
-    page: int = 1,
-    page_size: int = 20,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
     source_type: str = "",
     q: str = "",
     _: User = Depends(get_current_user),
@@ -143,7 +158,7 @@ def get_document(
     if doc is None:
         raise NotFoundError(f"文档 {doc_id} 不存在")
     blocks = db.scalars(
-        select(Block).where(Block.doc_id == doc_id).order_by(Block.seq)
+        select(Block).where(Block.doc_id == doc_id).order_by(Block.seq).limit(5001)
     ).all()
     out = _doc_out(doc)
     truncated = False

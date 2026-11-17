@@ -1,4 +1,7 @@
-/* 全局基础样式（规格§13 前端骨架） */
+/* ============================================================
+   知识伙伴 · 设计系统（Design Tokens + Element Plus 主题覆盖）
+   暖纸底 + 墨绿强调 + 衬线标题 —— 中性色承载层级，强调色每屏 ≤2 处
+   ============================================================ */
 * {
   box-sizing: border-box;
 }
@@ -10,14 +13,462 @@ body,
   margin: 0;
 }
 
+:root {
+  /* 中性色（纸面暖灰系） */
+  --bg: #f6f5f1;
+  --surface: #ffffff;
+  --surface-2: #faf9f6;
+  --fg: #272b30;
+  --fg-strong: #1a1d21;
+  --muted: #878c94;
+  --faint: #b0b4bb;
+  --border: #e6e4dd;
+  --border-strong: #d6d3ca;
+
+  /* 强调色（墨绿，唯一强调色） */
+  --accent: #0f766e;
+  --accent-hover: #0c635c;
+  --accent-soft: #e8f2f0;
+  --accent-border: #bcd9d4;
+
+  /* 语义色（仅状态反馈） */
+  --success: #3d8b5f;
+  --warn: #b8860b;
+  --danger: #c25450;
+
+  /* 字体 */
+  --font-display: 'Noto Serif SC', 'Songti SC', 'STSong', 'SimSun', serif;
+  --font-body: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue',
+    Arial, sans-serif;
+  --font-mono: 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
+
+  /* 侧栏纸面（与内容区同系的浅暖灰，避免整块深色造成割裂） */
+  --sidebar-bg: #f0eee7;
+
+  /* 层级 */
+  --radius: 10px;
+  --radius-sm: 6px;
+  --shadow-card: 0 1px 2px rgba(30, 30, 25, 0.04);
+  --shadow-pop: 0 8px 28px rgba(30, 30, 25, 0.12);
+}
+
 body {
-  font-family: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Helvetica Neue', Arial,
-    sans-serif;
-  background: #f5f7fa;
-  color: #303133;
+  font-family: var(--font-body);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
 }
 
 a {
   color: inherit;
   text-decoration: none;
+}
+
+/* ---------- Element Plus 主题覆盖 ---------- */
+:root {
+  --el-color-primary: var(--accent);
+  --el-color-primary-dark-2: var(--accent-hover);
+  --el-color-primary-light-3: #45938c;
+  --el-color-primary-light-5: #7cb3ad;
+  --el-color-primary-light-7: #b2d6d2;
+  --el-color-primary-light-8: #cfe5e2;
+  --el-color-primary-light-9: #e8f2f0;
+  --el-border-radius-base: 8px;
+  --el-border-color: var(--border);
+  --el-border-color-light: var(--border);
+  --el-border-color-lighter: var(--border);
+  --el-text-color-primary: var(--fg-strong);
+  --el-text-color-regular: var(--fg);
+  --el-text-color-secondary: var(--muted);
+  --el-font-family: var(--font-body);
+  --el-bg-color: var(--surface);
+  --el-fill-color-light: var(--surface-2);
+  --el-fill-color-blank: var(--surface);
+}
+
+/* 卡片：边框化、去默认阴影 */
+.el-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  --el-card-padding: 18px 20px;
+}
+
+.el-card__header {
+  border-bottom: 1px solid var(--border);
+  padding: 13px 20px;
+  font-size: 13px;
+}
+
+/* 表格：去斑马纹，弱化表头 */
+.el-table {
+  --el-table-header-bg-color: var(--surface-2);
+  --el-table-header-text-color: var(--muted);
+  --el-table-row-hover-bg-color: var(--surface-2);
+  --el-table-border-color: var(--border);
+}
+
+.el-table th.el-table__cell {
+  font-weight: 500;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+
+.el-table .el-table__cell {
+  padding: 10px 0;
+}
+
+/* 对话框 / 抽屉 */
+.el-dialog {
+  border-radius: 12px;
+}
+
+.el-drawer {
+  --el-drawer-padding-primary: 20px;
+}
+
+/* 时间线 / 标签 / 输入 等细节 */
+.el-tag {
+  border-radius: 5px;
+  --el-tag-font-size: 12px;
+}
+
+.el-button {
+  font-weight: 500;
+}
+
+.el-input__wrapper,
+.el-textarea__inner {
+  background: var(--surface);
+}
+
+/* 焦点可见性 */
+:focus-visible {
+  outline: 2px solid var(--accent-border);
+  outline-offset: 1px;
+}
+
+/* 细滚动条 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d4d1c8;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #c0bcb0;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ---------- 页面通用结构 ---------- */
+
+/* 常规页面容器：限宽居中（chat 等满幅页面不用） */
+.page {
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
+/* 页头：衬线标题 + 副题，右侧操作 */
+.page-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.page-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 21px;
+  font-weight: 600;
+  color: var(--fg-strong);
+  letter-spacing: 0.01em;
+}
+
+.page-sub {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* 卡片头：小节标题 */
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 600;
+  color: var(--fg-strong);
+}
+
+.card-head .sub {
+  font-weight: 400;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* 等宽数字（统计/计数场景） */
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* 弱化的说明文字 */
+.hint {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+/* ============================================================
+   Premium 层 · 高级感与动效体系
+   原则：只用 transform/opacity 动画；层叠阴影 + 光晕背景 +
+   克制的墨绿渐变强调；所有动效尊重 prefers-reduced-motion
+   ============================================================ */
+:root {
+  /* 缓动曲线 */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* 层叠阴影（近/中/远三段，带色温） */
+  --shadow-lift: 0 1px 2px rgba(30, 30, 25, 0.05), 0 6px 18px rgba(30, 30, 25, 0.06);
+  --shadow-float: 0 2px 6px rgba(30, 30, 25, 0.06), 0 14px 40px rgba(30, 30, 25, 0.1);
+  --shadow-pop-premium: 0 4px 12px rgba(30, 30, 25, 0.08), 0 24px 64px rgba(30, 30, 25, 0.16);
+
+  /* 强调渐变与辉光 */
+  --accent-grad: linear-gradient(135deg, #12897f 0%, #0f766e 55%, #0b5f58 100%);
+  --accent-glow: 0 4px 16px rgba(15, 118, 110, 0.28);
+  --accent-glow-strong: 0 6px 22px rgba(15, 118, 110, 0.38);
+}
+
+/* ---------- 纸面氛围光：暖底 + 两抹极淡的墨绿/暖金光晕 ---------- */
+body {
+  background:
+    radial-gradient(1100px 520px at 12% -8%, rgba(15, 118, 110, 0.055), transparent 62%),
+    radial-gradient(900px 480px at 100% 0%, rgba(184, 134, 11, 0.045), transparent 58%),
+    radial-gradient(1200px 800px at 50% 115%, rgba(15, 118, 110, 0.035), transparent 65%),
+    var(--bg);
+  background-attachment: fixed;
+}
+
+::selection {
+  background: rgba(15, 118, 110, 0.18);
+}
+
+/* ---------- 通用入场动画 ---------- */
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes pop-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.92) translateY(8px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes float-y {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+.rise-in {
+  animation: rise-in 0.5s var(--ease-out) both;
+}
+
+.fade-in {
+  animation: fade-in 0.45s var(--ease-out) both;
+}
+
+.pop-in {
+  animation: pop-in 0.42s var(--ease-spring) both;
+}
+
+/* 级联延迟工具类：stagger-1..6 */
+.stagger-1 { animation-delay: 0.05s; }
+.stagger-2 { animation-delay: 0.12s; }
+.stagger-3 { animation-delay: 0.19s; }
+.stagger-4 { animation-delay: 0.26s; }
+.stagger-5 { animation-delay: 0.33s; }
+.stagger-6 { animation-delay: 0.4s; }
+
+/* ---------- 路由切换过渡（App.vue 配合） ---------- */
+.route-enter-active {
+  transition: opacity 0.3s var(--ease-out), transform 0.3s var(--ease-out);
+}
+
+.route-leave-active {
+  transition: opacity 0.16s ease;
+}
+
+.route-enter-from {
+  opacity: 0;
+  transform: translateY(12px);
+}
+
+.route-leave-to {
+  opacity: 0;
+}
+
+/* ---------- Element Plus 精修 ---------- */
+
+/* 主按钮：渐变 + 辉光 + 悬停浮起 + 按压回弹
+   仅作用于实心 primary；plain/link/text 变体保持 EP 默认浅底配色，避免深底配深字 */
+.el-button {
+  transition: all 0.2s var(--ease-out);
+}
+
+.el-button--primary:not(.is-plain):not(.is-link):not(.is-text) {
+  background: var(--accent-grad);
+  border: none;
+  box-shadow: var(--accent-glow);
+}
+
+.el-button--primary:not(.is-plain):not(.is-link):not(.is-text):hover,
+.el-button--primary:not(.is-plain):not(.is-link):not(.is-text):focus-visible {
+  background: var(--accent-grad);
+  transform: translateY(-1px);
+  box-shadow: var(--accent-glow-strong);
+}
+
+.el-button--primary:not(.is-plain):not(.is-link):not(.is-text):active {
+  transform: translateY(0) scale(0.97);
+  box-shadow: 0 2px 8px rgba(15, 118, 110, 0.3);
+}
+
+.el-button:not(.el-button--primary):not(.is-link):not(.is-text):hover {
+  transform: translateY(-1px);
+}
+
+.el-button:not(.el-button--primary):not(.is-link):not(.is-text):active {
+  transform: scale(0.97);
+}
+
+/* link 按钮hover着色过渡 */
+.el-button.is-link {
+  transition: color 0.15s var(--ease-out);
+}
+
+/* 卡片：柔和抬升阴影 + 边框过渡 */
+.el-card {
+  transition: box-shadow 0.25s var(--ease-out), border-color 0.25s var(--ease-out),
+    transform 0.25s var(--ease-out);
+}
+
+.el-card:hover {
+  box-shadow: var(--shadow-lift);
+}
+
+/* 对话框：弹性缩放入场 + 浮起阴影 */
+.el-overlay {
+  backdrop-filter: blur(4px);
+  background: rgba(28, 30, 26, 0.32);
+}
+
+.el-dialog {
+  box-shadow: var(--shadow-pop-premium);
+  animation: pop-in 0.32s var(--ease-spring) both;
+}
+
+/* 消息提示：浮起 + 玻璃质感 */
+.el-message {
+  box-shadow: var(--shadow-float);
+  backdrop-filter: blur(8px);
+  animation: pop-in 0.3s var(--ease-spring) both;
+}
+
+/* 表格：行悬浮过渡 + 单元格底色渐变 */
+.el-table tbody tr {
+  transition: background-color 0.18s var(--ease-out);
+}
+
+.el-table .el-table__row:hover > td.el-table__cell {
+  background: color-mix(in srgb, var(--accent-soft) 45%, transparent) !important;
+}
+
+/* 输入框：聚焦光环 */
+.el-input__wrapper,
+.el-textarea__inner {
+  transition: box-shadow 0.2s var(--ease-out), border-color 0.2s var(--ease-out);
+}
+
+.el-input__wrapper.is-focus {
+  box-shadow: 0 0 0 1px var(--accent-border) inset, 0 0 0 3px rgba(15, 118, 110, 0.08);
+}
+
+/* Tabs：指示条弹性过渡 */
+.el-tabs__active-bar {
+  transition: transform 0.3s var(--ease-spring), width 0.3s var(--ease-spring);
+}
+
+.el-tabs__item {
+  transition: color 0.2s var(--ease-out);
+}
+
+/* 标签：hover 微抬 */
+.el-tag {
+  transition: transform 0.16s var(--ease-out);
+}
+
+.el-tag:hover {
+  transform: translateY(-1px);
+}
+
+/* 滚动条精修：更细、带过渡 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(24, 26, 22, 0.18);
+  border-radius: 999px;
+  transition: background 0.2s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(24, 26, 22, 0.32);
+}
+
+/* ---------- 动效可达性：系统减少动态时全部关闭 ---------- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

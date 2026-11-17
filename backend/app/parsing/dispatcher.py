@@ -44,6 +44,8 @@ def run_document_pipeline(doc_id: str) -> None:
         db.commit()
         try:
             parsed = _parse(doc)
+            # 幂等重跑：先清旧块（重试/中断残留），避免 UNIQUE(doc_id, block_id) 冲突
+            db.query(Block).filter(Block.doc_id == doc.id).delete()
             for i, b in enumerate(parsed.blocks, start=1):
                 db.add(
                     Block(
@@ -60,31 +62,49 @@ def run_document_pipeline(doc_id: str) -> None:
                     )
                 )
             meta = parsed.meta
-            doc.title = meta.title or doc.title
+            # 存储文件名统一为 original{ext}，解析器拿不到用户原始文件名；
+            # Excel 等无标题格式会回退成 "original"，此处保留上传时的原始标题。
+            if meta.title and meta.title != "original":
+                doc.title = meta.title
             doc.parse_quality = meta.parse_quality
             doc.low_reason = meta.low_reason
             doc.block_count = len(parsed.blocks)
-            doc.status = "ready"
             doc.error = None
+            # 仍保持 parsing：分块/向量化完成后才置 ready，避免客户端看到
+            # "ready 但 chunk_count=0" 的中间态（§6.2）。
             db.commit()
         except AppError as e:
+            db.rollback()  # 清理 flush 失败后的 session 状态，否则后续 commit 抛 PendingRollbackError
             doc.status = "failed"
             doc.error = e.message
             db.commit()
             return
         except Exception as e:  # noqa: BLE001
+            db.rollback()  # 同上：必须先 rollback 才能把 failed 状态落库
             doc.status = "failed"
             doc.error = f"{type(e).__name__}: {e}"[:500]
             db.commit()
             return
 
-        # 链式触发分块向量化（B4 提供；缺席时跳过并告警）
+        # 链式触发分块向量化；pipeline 成功后才把 ready 落库。
+        # 任何异常都必须落 failed，否则文档会停在 parsing/ready 且无法重试。
         try:
             from app.rag.pipeline import build_chunks_for_document
 
             build_chunks_for_document(doc_id)
         except ImportError:
             logger.warning("rag 模块不可用，跳过分块向量化：%s", doc_id)
+            db.refresh(doc)
+            doc.status = "ready"
+            db.commit()
+        except Exception as e:  # noqa: BLE001
+            logger.exception("分块向量化失败：%s", doc_id)
+            db.rollback()
+            db.refresh(doc)
+            if doc.status != "failed":
+                doc.status = "failed"
+                doc.error = f"分块向量化失败：{type(e).__name__}: {e}"[:500]
+                db.commit()
     finally:
         db.close()
 

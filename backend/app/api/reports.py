@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import FileResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -67,8 +67,8 @@ def _report_out(r: Report) -> dict:
 
 @router.get("")
 def list_reports(
-    page: int = 1,
-    page_size: int = 20,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
     _: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> dict:

@@ -40,7 +40,8 @@ def default_temperature(task_type: str) -> float:
 class GenerationParams:
     temperature: float | None = None
     max_tokens: int | None = None
-    timeout_s: int = 120
+    # 本地小参数思考型模型（如 qwen3:4b）单次生辉可观测到 ~114s，120s 会误杀，放宽到 300s
+    timeout_s: int = 300
     extra: dict[str, Any] = field(default_factory=dict)
 
     def resolved(self, task_type: str) -> dict[str, Any]:
@@ -131,6 +132,12 @@ class LLMGateway:
                     last_err = err
                 else:
                     return resp.json()
+            except httpx.TimeoutException as e:
+                last_err = e
+                if attempt == len(RETRY_DELAYS):
+                    raise GatewayError(
+                        f"LLM 端点超时（{timeout_s}s）：{e}", retryable=True
+                    ) from e
             except httpx.HTTPError as e:
                 last_err = e
                 if attempt == len(RETRY_DELAYS):

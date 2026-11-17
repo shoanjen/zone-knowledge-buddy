@@ -72,11 +72,9 @@ function refName(block) {
 
         <div v-else-if="block.type === 'image'" class="image-block">
           <el-icon class="image-icon"><Picture /></el-icon>
-          <div class="image-meta">
-            <div class="image-name">{{ refName(block) }}</div>
-            <div v-if="block.caption" class="image-caption">{{ block.caption }}</div>
-            <div class="image-note">图片已存档</div>
-          </div>
+          <span class="image-name">{{ refName(block) }}</span>
+          <span v-if="block.caption" class="hint image-caption">{{ block.caption }}</span>
+          <span class="hint image-note">图片已存档</span>
         </div>
 
         <p v-else-if="block.text" class="paragraph">{{ block.text }}</p>
@@ -90,92 +88,86 @@ function refName(block) {
   line-height: 1.7;
 }
 
-.block {
-  margin-bottom: 4px;
+/* 标题：衬线、无装饰线，按层级收敛字号 */
+.heading {
+  margin: 18px 0 8px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  color: var(--fg-strong);
+  line-height: 1.45;
+}
+
+h1.heading {
+  font-size: 19px;
+}
+
+h2.heading {
+  font-size: 16.5px;
+}
+
+h3.heading {
+  font-size: 15px;
+}
+
+h4.heading {
+  font-size: 14px;
 }
 
 .block:first-child .heading {
   margin-top: 0;
 }
 
-.heading {
-  color: #303133;
-  font-weight: 600;
-  line-height: 1.4;
-}
-
-h1.heading {
-  margin: 24px 0 12px;
-  font-size: 22px;
-}
-
-h2.heading {
-  margin: 20px 0 10px;
-  font-size: 19px;
-}
-
-h3.heading {
-  margin: 18px 0 8px;
-  font-size: 16px;
-}
-
-h4.heading {
-  margin: 16px 0 8px;
-  font-size: 14px;
-}
-
+/* 正文：适中的阅读行宽 */
 .paragraph {
   margin: 0 0 10px;
-  color: #303133;
+  max-width: 74ch;
+  font-size: 14px;
+  line-height: 1.75;
+  color: var(--fg);
   white-space: pre-wrap;
   word-break: break-word;
 }
 
+/* 表格：弱化题注 */
 .table-block {
-  margin: 12px 0;
+  margin: 14px 0;
 }
 
 .table-caption {
   margin-bottom: 6px;
-  font-size: 13px;
-  color: #606266;
-  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
 }
 
+/* 图片占位：图标 + 文件名 + 存档说明，一行排开 */
 .image-block {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   margin: 10px 0;
-  padding: 12px 16px;
-  border: 1px dashed #dcdfe6;
-  border-radius: 6px;
-  background: #fafbfc;
 }
 
 .image-icon {
-  font-size: 26px;
-  color: #909399;
-}
-
-.image-meta {
-  min-width: 0;
+  flex-shrink: 0;
+  font-size: 18px;
+  color: var(--muted);
 }
 
 .image-name {
+  flex-shrink: 0;
   font-size: 13px;
-  color: #303133;
+  color: var(--fg);
   word-break: break-all;
 }
 
 .image-caption {
-  font-size: 12px;
-  color: #909399;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .image-note {
-  margin-top: 2px;
-  font-size: 12px;
-  color: #67c23a;
+  flex-shrink: 0;
 }
 </style>

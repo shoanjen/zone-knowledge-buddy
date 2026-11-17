@@ -21,39 +21,52 @@ def table_to_markdown(data: list[list[str]], caption: str | None = None) -> str:
 
 
 def chunk_blocks(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """输入有序块（dict: block_id/type/level/text/caption/data/ocr_text），输出 chunk 列表。"""
-    results: list[dict[str, Any]] = []
-    buf = ""
-    buf_blocks: list[str] = []
-    section: list[str] = []
-    ov_text = ""
-    ov_blocks: list[str] = []
+    """输入有序块（dict: block_id/type/level/text/caption/data/ocr_text），输出 chunk 列表。
 
-    def close(carry: bool) -> None:
-        nonlocal buf, buf_blocks, ov_text, ov_blocks
-        text = buf.strip()
-        if text:
-            sec = " > ".join(section)
-            header = f"【章节】{sec}\n" if sec else ""
-            merged_blocks = list(dict.fromkeys(ov_blocks + buf_blocks))
-            results.append(
-                {
-                    "text": (ov_text + text) if ov_text else (header + text),
-                    "block_ids": merged_blocks,
-                    "section": sec,
-                }
-            )
-            ov_text, ov_blocks = ("", [])
-            if carry:
-                ov_text = text[-OVERLAP:]
-                ov_blocks = list(buf_blocks)
-        buf, buf_blocks = "", []
+    每个块文本都带【章节】前缀；50 字重叠只继承真正落在尾部窗口内的 block_id，
+    避免把未出现在块文本中的原文块声明为来源（反思/引用会据此误判支撑）。
+    """
+    results: list[dict[str, Any]] = []
+    parts: list[str] = []  # 当前缓冲区中的段落片段
+    ids: list[str] = []  # 与 parts 一一对应的 block_id
+    section: list[str] = []
+    carry_text = ""
+    carry_ids: list[str] = []
+
+    def _flush(carry: bool) -> None:
+        nonlocal parts, ids, carry_text, carry_ids
+        body = "\n".join(p for p in parts).strip()
+        if not body:
+            parts, ids = [], []
+            return
+        sec = " > ".join(section)
+        header = f"【章节】{sec}\n" if sec else ""
+        text = (carry_text + "\n" if carry_text else "") + body
+        chunk_ids = list(dict.fromkeys(carry_ids + ids))
+        results.append({"text": header + text, "block_ids": chunk_ids, "section": sec})
+
+        if carry:
+            tail = body[-OVERLAP:]
+            need = len(tail)
+            acc = 0
+            tail_ids: list[str] = []
+            for part, bid in zip(reversed(parts), reversed(ids), strict=False):
+                if acc >= need:
+                    break
+                tail_ids.append(bid)
+                acc += len(part) + 1
+            carry_text = tail
+            carry_ids = list(dict.fromkeys(reversed(tail_ids)))
+        else:
+            carry_text, carry_ids = "", []
+        parts, ids = [], []
 
     for b in blocks:
         btype = b.get("type")
         if btype == "heading":
-            if buf:
-                close(carry=True)
+            # 章节边界不携带上一节尾部，保证新块前缀与正文同属一节
+            if parts:
+                _flush(carry=False)
             level = b.get("level") or 1
             title = (b.get("text") or "").strip()
             if title:
@@ -63,20 +76,20 @@ def chunk_blocks(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
             text = (b.get("text") or "").strip()
             if not text:
                 continue
-            buf = f"{buf}\n{text}".strip()
-            buf_blocks.append(b["block_id"])
-            if len(buf) >= TARGET:
-                close(carry=True)
+            parts.append(text)
+            ids.append(b["block_id"])
+            if sum(len(p) + 1 for p in parts) >= TARGET:
+                _flush(carry=True)
         elif btype == "image":
             text = (b.get("ocr_text") or "").strip()
             if text:
-                buf = f"{buf}\n{text}".strip()
-                buf_blocks.append(b["block_id"])
-                if len(buf) >= TARGET:
-                    close(carry=True)
+                parts.append(text)
+                ids.append(b["block_id"])
+                if sum(len(p) + 1 for p in parts) >= TARGET:
+                    _flush(carry=True)
         elif btype == "table":
-            if buf:
-                close(carry=False)
+            if parts:
+                _flush(carry=False)
             md = table_to_markdown(b.get("data") or [], b.get("caption"))
             if md:
                 sec = " > ".join(section)
@@ -87,6 +100,6 @@ def chunk_blocks(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
                         "section": sec,
                     }
                 )
-    if buf:
-        close(carry=False)
+    if parts:
+        _flush(carry=False)
     return results

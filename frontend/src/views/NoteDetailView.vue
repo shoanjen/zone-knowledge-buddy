@@ -2,7 +2,7 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, Delete, EditPen } from '@element-plus/icons-vue'
+import { ArrowLeft, EditPen } from '@element-plus/icons-vue'
 import { MdEditor, MdPreview } from 'md-editor-v3'
 import 'md-editor-v3/lib/style.css'
 import { useNotesStore } from '../stores/notes'
@@ -83,7 +83,7 @@ function fmt(dt) {
 }
 
 function back() {
-  router.push('/notes')
+  router.push('/assets?tab=notes')
 }
 
 // ---- 编辑 / 保存 ----
@@ -154,7 +154,7 @@ async function removeNote() {
   deleting.value = true
   try {
     await store.remove(route.params.id)
-    router.push('/notes')
+    router.push('/assets?tab=notes')
   } catch {
     deleting.value = false
   }
@@ -174,90 +174,90 @@ function toPopoverCitation(c) {
 </script>
 
 <template>
-  <div v-loading="loading" class="note-detail">
+  <div v-loading="loading" class="page note-detail">
     <template v-if="note">
-      <div class="head">
-        <div class="head-row">
-          <el-button link :icon="ArrowLeft" @click="back">返回列表</el-button>
-          <span class="meta">更新于 {{ fmt(note.updated_at) }}</span>
-          <div class="spacer" />
+      <div class="detail-top">
+        <el-button link :icon="ArrowLeft" class="back-btn" @click="back">返回列表</el-button>
+        <span class="hint tnum">更新于 {{ fmt(note.updated_at) }}</span>
+      </div>
+
+      <div class="page-head detail-head">
+        <div class="head-main">
+          <h2 v-if="!editing" class="page-title detail-title">{{ note.title || '无标题' }}</h2>
+          <el-input
+            v-else
+            v-model="form.title"
+            class="title-input"
+            maxlength="256"
+            show-word-limit
+            placeholder="笔记标题"
+          />
+          <div v-if="!editing" class="tags">
+            <template v-if="note.tags && note.tags.length">
+              <el-tag v-for="t in note.tags" :key="t" size="small" effect="plain" type="info">
+                {{ t }}
+              </el-tag>
+            </template>
+            <span v-else class="hint">暂无标签</span>
+          </div>
+          <div v-else class="tags">
+            <el-tag
+              v-for="(t, i) in form.tags"
+              :key="t"
+              size="small"
+              effect="plain"
+              type="info"
+              closable
+              @close="removeTag(i)"
+            >
+              {{ t }}
+            </el-tag>
+            <el-input
+              v-if="tagInputVisible"
+              ref="tagInputRef"
+              v-model="tagValue"
+              class="tag-input"
+              size="small"
+              placeholder="标签名"
+              @keyup.enter="confirmTag"
+              @blur="confirmTag"
+            />
+            <el-button v-else size="small" plain @click="showTagInput">+ 添加标签</el-button>
+          </div>
+        </div>
+
+        <div class="head-actions">
           <template v-if="editing">
             <el-button @click="cancelEdit">取消</el-button>
             <el-button type="primary" :loading="saving" @click="save">保存</el-button>
           </template>
           <template v-else>
-            <el-button plain :icon="EditPen" @click="startEdit">编辑</el-button>
-            <el-button
-              plain
-              type="danger"
-              :icon="Delete"
-              :loading="deleting"
-              @click="removeNote"
-            >
-              删除
-            </el-button>
+            <el-button type="primary" plain :icon="EditPen" @click="startEdit">编辑</el-button>
+            <el-button link type="danger" :loading="deleting" @click="removeNote">删除</el-button>
           </template>
-        </div>
-
-        <!-- 标题 + 标签区 -->
-        <h2 v-if="!editing" class="title">{{ note.title || '无标题' }}</h2>
-        <el-input
-          v-else
-          v-model="form.title"
-          class="title-input"
-          maxlength="256"
-          show-word-limit
-          placeholder="笔记标题"
-        />
-        <div v-if="!editing" class="tags">
-          <template v-if="note.tags && note.tags.length">
-            <el-tag v-for="t in note.tags" :key="t" size="small" class="tag">{{ t }}</el-tag>
-          </template>
-          <span v-else class="muted">暂无标签</span>
-        </div>
-        <div v-else class="tags tag-editor">
-          <el-tag
-            v-for="(t, i) in form.tags"
-            :key="t"
-            size="small"
-            closable
-            class="tag"
-            @close="removeTag(i)"
-          >
-            {{ t }}
-          </el-tag>
-          <el-input
-            v-if="tagInputVisible"
-            ref="tagInputRef"
-            v-model="tagValue"
-            class="tag-input"
-            size="small"
-            placeholder="标签名"
-            @keyup.enter="confirmTag"
-            @blur="confirmTag"
-          />
-          <el-button v-else size="small" @click="showTagInput">+ 添加标签</el-button>
         </div>
       </div>
 
       <!-- 正文：只读预览 / 编辑器 -->
-      <div v-if="editing" class="content-card">
+      <div v-if="editing" class="content-card is-editing">
         <MdEditor
           v-model="form.contentMd"
           :toolbars="editorToolbars"
-          :style="{ height: '460px' }"
+          :style="{ height: '480px' }"
           placeholder="支持 Markdown；插入引用标记 [d_xxx:bN] 可关联来源块"
         />
       </div>
       <div v-else class="content-card">
         <MdPreview :model-value="note.content_md" />
-        <div v-if="!note.content_md" class="muted empty-content">正文为空，点击「编辑」开始撰写</div>
+        <div v-if="!note.content_md" class="hint empty-content">正文为空，点击「编辑」开始撰写</div>
       </div>
 
       <!-- 引用区 -->
       <div class="citations-card">
-        <div class="card-title">引用（{{ citations.length }}）</div>
-        <div v-if="!citations.length" class="muted">正文暂无引用标记</div>
+        <div class="card-head citation-head">
+          <span>引用 <span class="tnum count">{{ citations.length }}</span></span>
+        </div>
+        <div v-if="!citations.length" class="hint no-cite">正文暂无引用标记</div>
         <div v-else class="citation-list">
           <div
             v-for="c in citations"
@@ -265,7 +265,10 @@ function toPopoverCitation(c) {
             class="citation-item"
           >
             <CitationPopover :citation="toPopoverCitation(c)" />
-            <el-tag v-if="c.broken" type="danger" size="small">已失效</el-tag>
+            <span class="claim" :title="c.claim_text || ''">{{ c.claim_text }}</span>
+            <el-tag v-if="c.broken" type="danger" effect="plain" size="small" class="broken-tag">
+              已失效
+            </el-tag>
           </div>
         </div>
       </div>
@@ -283,38 +286,45 @@ function toPopoverCitation(c) {
   min-height: 240px;
 }
 
-.head {
-  margin-bottom: 14px;
-}
-
-.head-row {
+/* ---------- 面包屑行 ---------- */
+.detail-top {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 8px;
+  justify-content: space-between;
+  margin-bottom: 10px;
 }
 
-.meta {
-  color: #909399;
-  font-size: 12px;
+.back-btn {
+  color: var(--muted);
 }
 
-.spacer {
+.back-btn:hover {
+  color: var(--accent);
+}
+
+/* ---------- 页头 ---------- */
+.detail-head {
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+
+.head-main {
   flex: 1;
+  min-width: 0;
 }
 
-.title {
-  margin: 4px 0 8px;
-  font-size: 22px;
-  color: #303133;
+.detail-title {
+  margin: 0;
+  font-size: 19px;
   word-break: break-word;
 }
 
 .title-input {
-  margin: 4px 0 8px;
+  max-width: 560px;
 }
 
 .tags {
+  margin-top: 10px;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -322,57 +332,95 @@ function toPopoverCitation(c) {
   min-height: 24px;
 }
 
-.tag {
-  margin-right: 0;
-}
-
 .tag-input {
   width: 140px;
 }
 
+.head-actions {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.head-actions .el-button + .el-button {
+  margin-left: 0;
+}
+
+/* ---------- 正文卡片 ---------- */
 .content-card {
-  background: #fff;
-  border: 1px solid #e4e7ed;
-  border-radius: 8px;
-  padding: 4px 12px 12px;
-  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  padding: 20px 26px;
+}
+
+.content-card.is-editing {
+  padding: 12px;
+}
+
+.content-card.is-editing :deep(.md-editor) {
+  border-radius: var(--radius-sm);
+}
+
+.content-card :deep(.md-editor-preview) {
+  font-size: 14px;
+  color: var(--fg);
 }
 
 .empty-content {
-  position: absolute;
-  top: 16px;
-  left: 16px;
+  padding: 8px 0;
 }
 
+/* ---------- 引用区卡片 ---------- */
 .citations-card {
-  margin-top: 14px;
-  background: #fff;
-  border: 1px solid #e4e7ed;
-  border-radius: 8px;
-  padding: 12px 14px;
+  margin-top: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  padding: 16px 20px;
 }
 
-.card-title {
-  font-size: 14px;
+.citation-head {
+  font-size: 13px;
+}
+
+.count {
+  color: var(--muted);
   font-weight: 600;
-  color: #303133;
-  margin-bottom: 10px;
+}
+
+.no-cite {
+  margin-top: 10px;
 }
 
 .citation-list {
+  margin-top: 12px;
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .citation-item {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 10px;
+  min-width: 0;
 }
 
-.muted {
-  color: #c0c4cc;
-  font-size: 13px;
+.claim {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.broken-tag {
+  flex-shrink: 0;
 }
 </style>

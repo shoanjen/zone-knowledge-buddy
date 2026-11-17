@@ -26,6 +26,7 @@ dependencies = [
     "jinja2>=3.1",
     "python-ulid>=2.6",
     "jsonschema>=4.22",
+    "edge-tts>=7.3.1",
 ]
 
 [dependency-groups]

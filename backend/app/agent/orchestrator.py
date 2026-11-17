@@ -51,6 +51,38 @@ def _set_status(db, task: AgentTask, status: str, error: str | None = None) -> N
     db.commit()
 
 
+def _shrink_strings(value, limit: int):
+    """递归截短字符串，保留结构（用于观测结果超长时）。"""
+    if isinstance(value, str):
+        return value if len(value) <= limit else value[:limit] + "…"
+    if isinstance(value, list):
+        return [_shrink_strings(v, limit) for v in value]
+    if isinstance(value, dict):
+        return {k: _shrink_strings(v, limit) for k, v in value.items()}
+    return value
+
+
+def truncate_observation(result) -> tuple[str, dict]:
+    """把工具结果压到 OBS_TRUNCATE 以内，且保证返回的字符串仍是合法 JSON。
+
+    直接对 json.dumps 结果切片会截断字符串/括号，随后 json.loads 必失败；
+    这里优先按字段截短，仍超限则退化为带 preview 的合法结构。
+    """
+    raw = json.dumps(result, ensure_ascii=False)
+    if len(raw) <= OBS_TRUNCATE:
+        return raw, result
+    for limit in (1200, 800, 500, 300, 150, 80, 40):
+        trimmed = _shrink_strings(result, limit)
+        candidate = json.dumps(trimmed, ensure_ascii=False)
+        if len(candidate) <= OBS_TRUNCATE:
+            return candidate, trimmed
+    fallback = {
+        "truncated": True,
+        "preview": raw[: max(OBS_TRUNCATE - 80, 0)],
+    }
+    return json.dumps(fallback, ensure_ascii=False), fallback
+
+
 def run_agent_task(task_id: str) -> None:
     """线程池入口：planning → running(ReAct) → reflecting → done/paused/failed。"""
     import app.agent.tools.chart  # noqa: F401 注册
@@ -126,9 +158,9 @@ def run_agent_task(task_id: str) -> None:
                 from app.agent.tools.registry import call_tool
 
                 result = call_tool(ctx, tool_name, args)
-                obs = json.dumps(result, ensure_ascii=False)[:OBS_TRUNCATE]
+                obs, obs_obj = truncate_observation(result)
                 _log_step(db, task_id, seq, "observation",
-                          {"tool": tool_name, "result": json.loads(obs) if obs else {}})
+                          {"tool": tool_name, "result": obs_obj})
                 history.append({"role": "assistant", "content": json.dumps(step_out, ensure_ascii=False)})
                 history.append({"role": "user", "content": f"工具结果：{obs}"})
             else:
@@ -157,14 +189,20 @@ def run_agent_task(task_id: str) -> None:
         _log_step(db, task_id, seq, "reflection", {"report": report})
 
         # ---- 终态化 ----
-        if input_data.get("confirm_required"):
-            task.draft_json = json.dumps(
-                {"content_md": content, "charts": ctx.scratch.get("charts", [])},
-                ensure_ascii=False,
-            )
-            _set_status(db, task, "paused")
-            return
-        finalize_task(db, task, content, charts=ctx.scratch.get("charts", []), note_ctx=ctx)
+        try:
+            if input_data.get("confirm_required"):
+                task.draft_json = json.dumps(
+                    {"content_md": content, "charts": ctx.scratch.get("charts", [])},
+                    ensure_ascii=False,
+                )
+                _set_status(db, task, "paused")
+                return
+            finalize_task(db, task, content, charts=ctx.scratch.get("charts", []), note_ctx=ctx)
+        except Exception as e:  # noqa: BLE001
+            logger.exception("任务产出落库失败：%s", task_id)
+            db.rollback()
+            db.refresh(task)
+            _set_status(db, task, "failed", f"产出落库失败：{type(e).__name__}: {e}")
     finally:
         db.close()
 
@@ -181,10 +219,17 @@ def finalize_task(db, task: AgentTask, content_md: str, *, charts: list | None =
              if ln.startswith("# ") and ln.strip() != "#"),
             "未命名笔记",
         )
+        note = None
         if note_ctx is not None and note_ctx.created_note_id:
             note = db.get(Note, note_ctx.created_note_id)
+        if note is None:
+            # confirm 路径没有 note_ctx：复用 note.write 在 paused 前落库的草稿，
+            # 避免同一任务生成两条笔记；拒绝分支由 tasks.py 负责清理。
+            note = db.scalar(select(Note).where(Note.task_id == task.id))
+        if note is not None:
             note.content_md = content_md
             note.title = title
+            note.updated_at = utc_now_iso()
         else:
             note = Note(
                 title=title,

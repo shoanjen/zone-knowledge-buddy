@@ -1,11 +1,21 @@
 """统一异常层级与错误码（规格 §2.4）。"""
 
+import logging
 from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
+
+logger = logging.getLogger("kb.api")
+
+_HTTP_CODES = {
+    401: "AUTH_INVALID",
+    403: "FORBIDDEN",
+    404: "NOT_FOUND",
+    405: "METHOD_NOT_ALLOWED",
+}
 
 
 class AppError(Exception):
@@ -130,13 +140,15 @@ def register_error_handlers(app: FastAPI) -> None:
     async def _http(_: Request, exc: StarletteHTTPException):
         return JSONResponse(
             status_code=exc.status_code,
-            content={"code": "NOT_FOUND" if exc.status_code == 404 else "INTERNAL",
+            content={"code": _HTTP_CODES.get(exc.status_code, "INTERNAL"),
                      "message": str(exc.detail), "detail": {}},
         )
 
     @app.exception_handler(Exception)
-    async def _unhandled(_: Request, exc: Exception):
+    async def _unhandled(request: Request, exc: Exception):
+        # 完整异常只进日志；响应不返回 SQL/路径/内部值（§14）
+        logger.exception("未处理异常：%s %s", request.method, request.url.path)
         return JSONResponse(
             status_code=500,
-            content={"code": "INTERNAL", "message": f"服务内部错误：{exc}", "detail": {}},
+            content={"code": "INTERNAL", "message": "服务内部错误，请稍后重试", "detail": {}},
         )

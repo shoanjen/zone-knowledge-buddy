@@ -15,7 +15,7 @@ from app.core.errors import (
     ProviderActiveError,
     ProviderConfigError,
 )
-from app.core.security import encrypt_secret
+from app.core.security import decrypt_secret, encrypt_secret
 from app.llm.gateway import LLMGateway
 from app.llm.providers import ProviderSnapshot
 from app.models.llm import LLMProvider
@@ -24,6 +24,19 @@ from app.models.user import User
 from app.schemas.settings import ProviderIn, ProviderOut, ProviderUpdate
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
+
+
+def _key_hint(row: LLMProvider) -> str | None:
+    """掩码提示：前 3 + ···· + 末 4；解密失败不阻塞列表，返回 None。"""
+    if not row.api_key_enc:
+        return None
+    try:
+        plain = decrypt_secret(row.api_key_enc)
+    except Exception:
+        return None
+    if len(plain) <= 7:
+        return "····"
+    return f"{plain[:3]}····{plain[-4:]}"
 
 
 def _to_out(row: LLMProvider) -> ProviderOut:
@@ -35,6 +48,7 @@ def _to_out(row: LLMProvider) -> ProviderOut:
         model=row.model,
         is_active=row.is_active,
         has_api_key=bool(row.api_key_enc),
+        api_key_hint=_key_hint(row),
     )
 
 
@@ -174,6 +188,13 @@ def put_settings_values(
     _: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> dict:
+    # 先做 embedding 锁校验，再写任何字段：避免返回 409 但 generation_params 已生效
+    current = _load_setting(db, "embedding", {})
+    if body.embedding is not None and current.get("locked_at"):
+        raise EmbeddingLockedError(
+            "向量库已建立，更换 embedding 模型需清空全部文档后重建（V1 不支持自动重算）"
+        )
+
     if body.generation_params is not None:
         row = db.get(Setting, "generation_params")
         if row is None:
@@ -181,22 +202,16 @@ def put_settings_values(
                            value_json=json.dumps(body.generation_params)))
         else:
             row.value_json = json.dumps(body.generation_params, ensure_ascii=False)
-        db.commit()
 
     if body.embedding is not None:
-        current = _load_setting(db, "embedding", {})
-        if current.get("locked_at"):
-            raise EmbeddingLockedError(
-                "向量库已建立，更换 embedding 模型需清空全部文档后重建（V1 不支持自动重算）"
-            )
         row = db.get(Setting, "embedding")
         merged = {**current, **body.embedding, "locked_at": None}
         if row is None:
             db.add(Setting(key="embedding", value_json=json.dumps(merged, ensure_ascii=False)))
         else:
             row.value_json = json.dumps(merged, ensure_ascii=False)
-        db.commit()
 
+    db.commit()  # 单次事务：要么全部生效，要么全部不生效
     return _settings_response(db)
 
 

@@ -2,7 +2,7 @@
 
 import json
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -50,8 +50,8 @@ def _task_out(db: Session, t: AgentTask, detail: bool = False) -> dict:
 
 @router.get("")
 def list_tasks(
-    page: int = 1,
-    page_size: int = 20,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
     status: str = "",
     type: str = "",
     _: User = Depends(get_current_user),
@@ -97,7 +97,12 @@ def confirm_task(
     draft = json.loads(t.draft_json or "{}")
     if not body.approve:
         from app.core.ids import utc_now_iso
+        from app.models.notes import Note, NoteCitation
 
+        # 拒绝时清掉 note.write 在 paused 前落库的草稿，避免“被拒绝的产出”出现在笔记列表
+        for note in db.scalars(select(Note).where(Note.task_id == t.id)).all():
+            db.query(NoteCitation).filter(NoteCitation.note_id == note.id).delete()
+            db.delete(note)
         t.error = "user_rejected"
         t.finished_at = utc_now_iso()
         t.status = "failed"

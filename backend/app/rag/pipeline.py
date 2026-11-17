@@ -35,12 +35,17 @@ def _ensure_embedding_lock(db) -> None:
 
 
 def build_chunks_for_document(doc_id: str) -> None:
+    """解析完成后同步执行：分块 → embedding → Chroma → ready。
+
+    调用方（dispatcher）在解析阶段保持 status=parsing；本函数成功后才置
+    ready，任何失败都置 failed，保证前端看到的 ready 一定带可用 chunk。
+    """
     from app.llm.gateway import embed_texts
 
     db = SessionLocal()
     try:
         doc = db.get(Document, doc_id)
-        if doc is None or doc.status != "ready":
+        if doc is None or doc.status not in ("parsing", "ready"):
             return
         blocks = db.scalars(
             select(Block).where(Block.doc_id == doc_id).order_by(Block.seq)
@@ -66,6 +71,8 @@ def build_chunks_for_document(doc_id: str) -> None:
 
         if not chunks:
             doc.chunk_count = 0
+            doc.status = "ready"
+            doc.error = None
             db.commit()
             return
 
@@ -73,35 +80,46 @@ def build_chunks_for_document(doc_id: str) -> None:
             vectors = asyncio.run(embed_texts([c["text"] for c in chunks]))
         except GatewayError as e:
             doc.status = "failed"
-            doc.error = f"embedding: {e}"
+            doc.error = f"embedding: {e}"[:500]
             db.commit()
             return
 
-        items = []
-        for c, vec in zip(chunks, vectors, strict=True):
-            cid = new_chunk_id()
-            db.add(
-                Chunk(
-                    id=cid,
-                    doc_id=doc_id,
-                    block_ids_json=json.dumps(c["block_ids"]),
-                    text=c["text"],
-                    vector_id=cid,
+        try:
+            items = []
+            for c, vec in zip(chunks, vectors, strict=True):
+                cid = new_chunk_id()
+                db.add(
+                    Chunk(
+                        id=cid,
+                        doc_id=doc_id,
+                        block_ids_json=json.dumps(c["block_ids"]),
+                        text=c["text"],
+                        vector_id=cid,
+                    )
                 )
-            )
-            items.append(
-                {
-                    "id": cid,
-                    "vector": vec,
-                    "text": c["text"],
-                    "doc_id": doc_id,
-                    "block_ids": c["block_ids"],
-                    "section": c.get("section", ""),
-                }
-            )
-        add_chunks(items)
-        doc.chunk_count = len(items)
-        db.commit()
-        _ensure_embedding_lock(db)
+                items.append(
+                    {
+                        "id": cid,
+                        "vector": vec,
+                        "text": c["text"],
+                        "doc_id": doc_id,
+                        "block_ids": c["block_ids"],
+                        "section": c.get("section", ""),
+                    }
+                )
+            # 规格 §7.2：首条向量写入前锁定 embedding 配置
+            _ensure_embedding_lock(db)
+            add_chunks(items)
+            doc.chunk_count = len(items)
+            doc.status = "ready"
+            doc.error = None
+            db.commit()
+        except Exception as e:  # noqa: BLE001
+            logger.exception("写入向量库失败：%s", doc_id)
+            db.rollback()
+            db.refresh(doc)
+            doc.status = "failed"
+            doc.error = f"向量写入失败：{type(e).__name__}: {e}"[:500]
+            db.commit()
     finally:
         db.close()

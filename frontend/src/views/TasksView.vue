@@ -23,11 +23,13 @@ const TYPE_OPTIONS = [
   { value: '', label: '全部类型' },
   { value: 'note.generate', label: '笔记生成' },
   { value: 'report.generate', label: '报告生成' },
+  { value: 'podcast.generate', label: '播客生成' },
 ]
 
 const TYPE_LABELS = {
   'note.generate': '笔记生成',
   'report.generate': '报告生成',
+  'podcast.generate': '播客生成',
 }
 
 // 取消任务仅在任务尚未结束/暂停时可用
@@ -180,11 +182,11 @@ onMounted(() => store.fetchList())
 </script>
 
 <template>
-  <div class="tasks-page">
-    <div class="page-header">
+  <div class="page tasks-page">
+    <div class="page-head">
       <div>
-        <h2 class="page-title">任务中心</h2>
-        <p class="page-subtitle">笔记与报告生成任务，进行中的任务每 3 秒自动刷新</p>
+        <h2 class="page-title">任务</h2>
+        <p class="page-sub">Agent 执行留痕 · 产出过程与草稿确认</p>
       </div>
     </div>
 
@@ -205,6 +207,7 @@ onMounted(() => store.fetchList())
       >
         <el-option v-for="opt in TYPE_OPTIONS" :key="opt.value" :label="opt.label" :value="opt.value" />
       </el-select>
+      <el-button @click="onFilterChange">查询</el-button>
     </div>
 
     <el-table
@@ -213,9 +216,9 @@ onMounted(() => store.fetchList())
       class="tasks-table"
       @row-click="openDetail"
     >
-      <el-table-column label="任务 ID" width="160">
+      <el-table-column label="任务 ID" width="150">
         <template #default="{ row }">
-          <span class="task-id">{{ shortId(row.id) }}</span>
+          <span class="mono-cell id-cell">{{ shortId(row.id) }}</span>
         </template>
       </el-table-column>
       <el-table-column label="类型" width="110">
@@ -227,28 +230,40 @@ onMounted(() => store.fetchList())
         </template>
       </el-table-column>
       <el-table-column prop="provider_name" label="模型" min-width="140" show-overflow-tooltip>
-        <template #default="{ row }">{{ row.provider_name || '—' }}</template>
-      </el-table-column>
-      <el-table-column label="错误" min-width="200" show-overflow-tooltip>
         <template #default="{ row }">
-          <span :class="row.error ? 'error-text' : ''">{{ row.error || '—' }}</span>
+          <span :class="row.provider_name ? 'mono-cell' : 'muted-cell'">
+            {{ row.provider_name || '—' }}
+          </span>
+        </template>
+      </el-table-column>
+      <el-table-column label="错误" min-width="200">
+        <template #default="{ row }">
+          <el-tooltip v-if="row.error" :content="row.error" placement="top">
+            <span class="error-cell">{{ row.error }}</span>
+          </el-tooltip>
+          <span v-else class="muted-cell">—</span>
         </template>
       </el-table-column>
       <el-table-column label="创建时间" width="170">
-        <template #default="{ row }">{{ formatTime(row.created_at) }}</template>
+        <template #default="{ row }">
+          <span class="time-cell">{{ formatTime(row.created_at) }}</span>
+        </template>
       </el-table-column>
       <el-table-column label="完成时间" width="170">
-        <template #default="{ row }">{{ formatTime(row.finished_at) }}</template>
-      </el-table-column>
-      <el-table-column label="操作" width="90" align="center">
         <template #default="{ row }">
-          <el-button link type="primary" @click.stop="openDetail(row)">详情</el-button>
+          <span class="time-cell">{{ formatTime(row.finished_at) }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="操作" width="80" align="center">
+        <template #default="{ row }">
+          <el-button link size="small" @click.stop="openDetail(row)">详情</el-button>
         </template>
       </el-table-column>
     </el-table>
 
     <div class="pagination-bar">
       <el-pagination
+        small
         background
         layout="total, sizes, prev, pager, next"
         :total="store.total"
@@ -260,17 +275,17 @@ onMounted(() => store.fetchList())
       />
     </div>
 
-    <el-drawer
-      v-model="drawerVisible"
-      :title="drawerTitle"
-      size="50%"
-      @closed="onDrawerClosed"
-    >
+    <el-drawer v-model="drawerVisible" size="50%" @closed="onDrawerClosed">
+      <template #header>
+        <div class="drawer-head">
+          <h3 class="drawer-title">{{ drawerTitle }}</h3>
+          <StatusBadge v-if="current" :status="current.status" />
+        </div>
+      </template>
       <div v-loading="detailLoading" class="drawer-body">
         <template v-if="current">
           <el-alert
             v-if="current.error"
-            class="drawer-error"
             type="error"
             :title="current.error"
             :closable="false"
@@ -280,17 +295,27 @@ onMounted(() => store.fetchList())
           <div class="drawer-section">
             <h3 class="section-title">任务信息</h3>
             <el-descriptions :column="2" border size="small">
-              <el-descriptions-item label="任务 ID" :span="2">{{ current.id }}</el-descriptions-item>
+              <el-descriptions-item label="任务 ID" :span="2">
+                <span class="mono-cell id-cell">{{ current.id }}</span>
+              </el-descriptions-item>
               <el-descriptions-item label="类型">{{ typeLabel(current.type) }}</el-descriptions-item>
               <el-descriptions-item label="状态">
                 <StatusBadge :status="current.status" />
               </el-descriptions-item>
-              <el-descriptions-item label="模型">{{ current.provider_name || '—' }}</el-descriptions-item>
-              <el-descriptions-item label="文档数量">
-                {{ current.input?.doc_ids?.length ?? 0 }}
+              <el-descriptions-item label="模型">
+                <span :class="current.provider_name ? 'mono-cell' : 'muted-cell'">
+                  {{ current.provider_name || '—' }}
+                </span>
               </el-descriptions-item>
-              <el-descriptions-item label="创建时间">{{ formatTime(current.created_at) }}</el-descriptions-item>
-              <el-descriptions-item label="完成时间">{{ formatTime(current.finished_at) }}</el-descriptions-item>
+              <el-descriptions-item label="文档数量">
+                <span class="tnum">{{ current.input?.doc_ids?.length ?? 0 }}</span>
+              </el-descriptions-item>
+              <el-descriptions-item label="创建时间">
+                <span class="time-cell">{{ formatTime(current.created_at) }}</span>
+              </el-descriptions-item>
+              <el-descriptions-item label="完成时间">
+                <span class="time-cell">{{ formatTime(current.finished_at) }}</span>
+              </el-descriptions-item>
               <el-descriptions-item label="意图" :span="2">
                 {{ current.input?.intent || '—' }}
               </el-descriptions-item>
@@ -299,27 +324,27 @@ onMounted(() => store.fetchList())
 
           <div v-if="isPaused" class="drawer-section">
             <h3 class="section-title">草稿确认</h3>
-            <el-input
-              v-model="editedContent"
-              type="textarea"
-              :rows="12"
-              placeholder="暂无草稿内容"
-            />
-            <div class="confirm-actions">
-              <el-button type="primary" :loading="actionLoading" @click="approveDraft">
-                批准并保存
-              </el-button>
-              <el-button type="danger" :loading="actionLoading" @click="rejectDraft">拒绝</el-button>
+            <div class="draft-card">
+              <el-input
+                v-model="editedContent"
+                type="textarea"
+                :rows="14"
+                class="draft-input"
+                placeholder="暂无草稿内容"
+              />
+              <div class="confirm-actions">
+                <el-button type="primary" :loading="actionLoading" @click="approveDraft">
+                  批准并保存
+                </el-button>
+                <el-button type="danger" plain :loading="actionLoading" @click="rejectDraft">
+                  拒绝
+                </el-button>
+              </div>
             </div>
           </div>
 
           <div v-if="cancelable" class="drawer-section">
-            <el-button
-              type="danger"
-              plain
-              :loading="actionLoading"
-              @click="cancelTask"
-            >
+            <el-button link type="danger" :loading="actionLoading" @click="cancelTask">
               取消任务
             </el-button>
           </div>
@@ -340,34 +365,16 @@ onMounted(() => store.fetchList())
   display: flex;
   flex-direction: column;
   gap: 14px;
-  height: 100%;
-}
-
-.page-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.page-title {
-  margin: 0;
-  font-size: 20px;
-  color: #303133;
-}
-
-.page-subtitle {
-  margin: 4px 0 0;
-  font-size: 13px;
-  color: #909399;
 }
 
 .filter-bar {
   display: flex;
-  gap: 12px;
+  align-items: center;
+  gap: 10px;
 }
 
 .filter-select {
-  width: 160px;
+  width: 150px;
 }
 
 .tasks-table {
@@ -378,14 +385,31 @@ onMounted(() => store.fetchList())
   cursor: pointer;
 }
 
-.task-id {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 13px;
-  color: #606266;
+.mono-cell {
+  font-family: var(--font-mono);
 }
 
-.error-text {
-  color: #f56c6c;
+.id-cell {
+  font-size: 12px;
+}
+
+.muted-cell {
+  color: var(--muted);
+}
+
+.error-cell {
+  display: block;
+  font-size: 12px;
+  color: var(--danger);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.time-cell {
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .pagination-bar {
@@ -393,21 +417,49 @@ onMounted(() => store.fetchList())
   justify-content: flex-end;
 }
 
+.drawer-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.drawer-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--fg-strong);
+  letter-spacing: 0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .drawer-body {
   display: flex;
   flex-direction: column;
   gap: 18px;
-  min-height: 100%;
-}
-
-.drawer-error {
-  margin-bottom: 4px;
 }
 
 .section-title {
   margin: 0 0 10px;
-  font-size: 15px;
-  color: #303133;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg-strong);
+}
+
+.draft-card {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+}
+
+.draft-input :deep(.el-textarea__inner) {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.7;
 }
 
 .confirm-actions {

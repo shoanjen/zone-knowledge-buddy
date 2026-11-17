@@ -73,6 +73,41 @@ def _init_seed() -> None:
         db.close()
 
 
+def _recover_orphans() -> None:
+    """启动自愈：进程退出时仍停在中间态的文档/任务已无线程推进，统一置 failed。
+
+    - 文档：pending/parsing → failed（可重试/可删）
+    - 任务：pending/planning/running/reflecting → failed（线程已随进程消失）；
+      paused 保留：草稿已生成，确认/拒绝不依赖 LLM，重启后仍可操作
+    """
+    from sqlalchemy import update
+
+    from app.core.db import SessionLocal
+    from app.models import AgentTask, Document
+
+    db = SessionLocal()
+    try:
+        doc_result = db.execute(
+            update(Document)
+            .where(Document.status.in_(("pending", "parsing")))
+            .values(status="failed", error="服务重启时解析中断，请重试")
+        )
+        task_result = db.execute(
+            update(AgentTask)
+            .where(AgentTask.status.in_(("pending", "planning", "running", "reflecting")))
+            .values(status="failed", error="服务重启时任务中断，请重新发起")
+        )
+        db.commit()
+        if doc_result.rowcount:
+            logger.warning(
+                "启动自愈：%s 个 pending/parsing 文档已置为 failed（可重试/可删除）", doc_result.rowcount
+            )
+        if task_result.rowcount:
+            logger.warning("启动自愈：%s 个进行中任务已置为 failed（可重新发起）", task_result.rowcount)
+    finally:
+        db.close()
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     s = get_settings()
@@ -80,8 +115,10 @@ async def lifespan(_: FastAPI):
     s.chroma_dir.mkdir(parents=True, exist_ok=True)
     s.storage_dir.mkdir(parents=True, exist_ok=True)
     s.reports_dir.mkdir(parents=True, exist_ok=True)
+    s.podcasts_dir.mkdir(parents=True, exist_ok=True)
     run_migrations()
     _init_seed()
+    _recover_orphans()
     logging.basicConfig(
         level=logging.DEBUG if s.is_dev else logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
@@ -111,7 +148,18 @@ def create_app() -> FastAPI:
 
     register_error_handlers(app)
 
-    from app.api import auth, chat, data, documents, notes, reports, search, settings, tasks
+    from app.api import (
+        auth,
+        chat,
+        data,
+        documents,
+        notes,
+        podcasts,
+        reports,
+        search,
+        settings,
+        tasks,
+    )
 
     app.include_router(auth.router)
     app.include_router(settings.router)
@@ -121,6 +169,7 @@ def create_app() -> FastAPI:
     app.include_router(tasks.router)
     app.include_router(chat.router)
     app.include_router(reports.router)
+    app.include_router(podcasts.router)
     app.include_router(data.router)
 
     @app.get("/api/health", tags=["meta"])

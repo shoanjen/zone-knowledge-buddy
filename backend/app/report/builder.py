@@ -22,6 +22,16 @@ from app.report.jinja_env import get_env, load_echarts_js
 
 _md = MarkdownIt("commonmark")  # html=False：转义源内联 HTML
 _TOKEN_RE = re.compile(r"\[(d_[A-Za-z0-9]+:b\d+)\]")
+MAX_HTML_BYTES = 5 * 1024 * 1024
+
+
+def _script_json(value) -> str:
+    """内联到 <script> 的 JSON：转义 </ 与 <!--，防止正文提前闭合脚本。"""
+    return (
+        json.dumps(value, ensure_ascii=False)
+        .replace("</", "<\\/")
+        .replace("<!--", "<\\!--")
+    )
 
 
 def _block_snapshot(db, doc_id: str, block_id: str) -> dict:
@@ -41,7 +51,7 @@ def _render_inline(md_text: str) -> tuple[str, list[dict]]:
     def _sub(m: re.Match) -> str:
         token = m.group(1)
         idx = next((i + 1 for i, c in enumerate(citations)
-                    if f"{c['doc_id']}:{c['block_id']}" == token[1:-1]), 0)
+                    if f"{c['doc_id']}:{c['block_id']}" == token), 0)
         return f"⟦CITE:{token}:{idx}⟧"
 
     placeholder = _TOKEN_RE.sub(_sub, md_text)
@@ -98,25 +108,38 @@ def build_report(db, task: AgentTask, content_md: str, *, charts: list | None = 
                 all_citations.append(c)
 
     citation_data = [_block_snapshot(db, c["doc_id"], c["block_id"]) for c in all_citations]
-    charts = charts or []
-    safe_charts = [
-        {"title": c.get("title", "图表"), "option": c.get("echarts_option", {})} for c in charts
-    ]
 
-    html_out = get_env().get_template("template.html").render(
-        title=title,
-        intent=input_data.get("intent", ""),
-        sections=rendered_sections,
-        section_htmls=[  # 预组合，避免模板内 zip（Jinja2 无该全局）
-            {"no": s["no"], "heading": s["heading"], "html": Markup(s["html"])}
-            for s in rendered_sections
-        ],
-        charts=safe_charts,
-        chart_option_jsons=[json.dumps(c["option"], ensure_ascii=False) for c in safe_charts],
-        citation_json=json.dumps(citation_data, ensure_ascii=False),
-        echarts_js=load_echarts_js(),
-        generated_at=utc_now_iso(),
-    )
+    def _render(charts: list[dict]) -> str:
+        return get_env().get_template("template.html").render(
+            title=title,
+            intent=input_data.get("intent", ""),
+            sections=rendered_sections,
+            section_htmls=[  # 预组合，避免模板内 zip（Jinja2 无该全局）
+                {"no": s["no"], "heading": s["heading"], "html": Markup(s["html"])}
+                for s in rendered_sections
+            ],
+            charts=charts,
+            chart_option_jsons=[json.dumps(c["option"], ensure_ascii=False) for c in charts],
+            citation_json=_script_json(citation_data),
+            echarts_js=load_echarts_js(),
+            charts_truncated=False,
+            generated_at=utc_now_iso(),
+        )
+
+    safe_charts = [
+        {"title": c.get("title", "图表"), "option": c.get("echarts_option", {})} for c in (charts or [])
+    ]
+    html_out = _render(safe_charts)
+    charts_truncated = False
+    if len(html_out.encode("utf-8")) > MAX_HTML_BYTES:
+        # 规格 §11.2：单文件 ≤5MB；超限时截断图表并在页脚提示
+        charts_truncated = True
+        html_out = _render([])
+    if charts_truncated:
+        html_out = html_out.replace(
+            "引用可点击核验原文</footer>",
+            "引用可点击核验原文 · 报告超过 5MB，图表已省略</footer>",
+        )
 
     report = db.query(Report).filter(Report.task_id == task.id).one_or_none()
     if report is None:

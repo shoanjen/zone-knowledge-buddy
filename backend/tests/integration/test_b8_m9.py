@@ -90,6 +90,19 @@ def test_settings_roundtrip_and_embedding_lock(client, auth_headers, db_session)
     assert r.status_code == 200, r.text
     assert r.json()["embedding_locked"] is True
 
+    # 锁定后同时提交参数与 embedding：必须整体 409，generation_params 不得部分生效
+    r = client.put(
+        "/api/settings",
+        headers=auth_headers,
+        json={
+            "generation_params": {"extract": 0.9, "chat": 0.9, "report": 0.9},
+            "embedding": {"model": "other"},
+        },
+    )
+    assert r.status_code == 409
+    body = client.get("/api/settings", headers=auth_headers).json()
+    assert body["generation_params"]["extract"] == 0.3
+
 
 # ---------- §12.4 数据导出 ----------
 

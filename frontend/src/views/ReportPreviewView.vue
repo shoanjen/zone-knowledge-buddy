@@ -46,7 +46,7 @@ function formatSize(bytes) {
 }
 
 function goBack() {
-  router.push('/reports')
+  router.push('/assets?tab=reports')
 }
 
 onMounted(load)
@@ -60,16 +60,12 @@ watch(
 
 <template>
   <div class="report-preview-page">
-    <div class="preview-header">
-      <el-button @click="goBack">返回</el-button>
-      <div class="preview-meta">
-        <h2 class="preview-title">{{ report?.title || '报告预览' }}</h2>
-        <template v-if="report && hasHtml">
-          <el-divider direction="vertical" />
-          <span class="meta-item">章节 {{ sectionCount }}</span>
-          <span class="meta-item">大小 {{ formatSize(report.size_bytes) }}</span>
-        </template>
-      </div>
+    <div class="preview-head">
+      <el-button link class="back-link" @click="goBack">← 返回</el-button>
+      <h2 class="preview-title">{{ report?.title || '报告预览' }}</h2>
+      <span v-if="report && hasHtml" class="hint preview-meta tnum">
+        {{ sectionCount }} 章 · {{ formatSize(report.size_bytes) }}
+      </span>
     </div>
 
     <div v-loading="loading" class="preview-body">
@@ -92,41 +88,56 @@ watch(
   height: 100%;
 }
 
-.preview-header {
+.preview-head {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
 }
 
-.preview-meta {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  min-width: 0;
+.back-link {
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+.back-link:hover {
+  color: var(--accent);
 }
 
 .preview-title {
+  flex: 1;
+  min-width: 0;
   margin: 0;
+  font-family: var(--font-display);
   font-size: 18px;
-  color: #303133;
+  font-weight: 600;
+  color: var(--fg-strong);
+  letter-spacing: 0.01em;
+  text-align: center;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.meta-item {
-  font-size: 13px;
-  color: #909399;
+.preview-meta {
+  flex-shrink: 0;
   white-space: nowrap;
 }
 
+/* ReportViewer 撑满剩余高度（约 calc(100vh - 190px) 区间） */
 .preview-body {
   flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
 }
 
 .preview-body > :deep(.report-viewer) {
   flex: 1;
+  min-height: 0;
+}
+
+.preview-body :deep(.el-empty) {
+  margin: auto;
 }
 </style>

@@ -42,20 +42,26 @@ def parse_pdf(path: Path) -> ParsedDoc:
     )
     level_of = {sz: min(i + 1, 4) for i, sz in enumerate(heading_sizes)}
 
-    # 3) 表格区域：块文本与之相交则跳过（转 table 块）
+    # 3) 逐页抽取：表格与文本按页内坐标排序，保持原始阅读顺序
     blocks: list[IRBlock] = []
     low_pages = 0
     for pt in pages_text:
         page = doc[pt["page"]]
+        page_items: list[tuple[float, float, int, str, object]] = []
         table_bboxes = []
+        order = 0
         try:
             finder = page.find_tables()
             for t in getattr(finder, "tables", []):
                 rows = t.extract()
                 if rows and any(any(str(c).strip() for c in row) for row in rows):
+                    rect = fitz.Rect(t.bbox)
                     table_bboxes.append(t.bbox)
                     data = [[_norm_text(str(c)) if c is not None else "" for c in row] for row in rows]
-                    blocks.append(IRBlock(type="table", data=data, caption=None))
+                    page_items.append(
+                        (rect.y0, rect.x0, order, "table", IRBlock(type="table", data=data, caption=None))
+                    )
+                    order += 1
         except Exception:  # noqa: BLE001 — 个别页表格失败不致命
             pass
 
@@ -71,7 +77,17 @@ def parse_pdf(path: Path) -> ParsedDoc:
             clean = _norm_text(txt)
             if not clean:
                 continue
-            sz = round(s["size"], 1)
+            page_items.append(
+                (s["bbox"][1], s["bbox"][0], order, "text", (clean, round(s["size"], 1)))
+            )
+            order += 1
+
+        page_items.sort(key=lambda item: (round(item[0], 1), item[1], item[2]))
+        for _y, _x, _o, kind, payload in page_items:
+            if kind == "table":
+                blocks.append(payload)  # type: ignore[arg-type]
+                continue
+            clean, sz = payload  # type: ignore[misc]
             if sz in level_of and len(clean) < 60:
                 blocks.append(IRBlock(type="heading", level=level_of[sz], text=clean))
             else:

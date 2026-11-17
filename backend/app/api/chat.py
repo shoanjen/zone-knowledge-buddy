@@ -3,7 +3,7 @@
 import json
 import time
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -17,7 +17,7 @@ from app.llm.gateway import GenerationParams
 from app.models.chat import ChatMessage, ChatSession
 from app.models.documents import Block
 from app.models.user import User
-from app.schemas.chat import ChatIn
+from app.schemas.chat import ChatIn, SessionBatchDeleteIn
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
@@ -36,6 +36,7 @@ def _sse(event: str, data: dict) -> str:
 @router.post("")
 async def chat(
     body: ChatIn,
+    request: Request,
     _: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -92,6 +93,9 @@ async def chat(
                 stream=True,
             )
             async for delta in stream:
+                if await request.is_disconnected():
+                    # 客户端已断开：停止消费上游流，且不落库半截回答（§14）
+                    return
                 assistant_text += delta
                 yield _sse("token", {"delta": delta})
 
@@ -172,3 +176,36 @@ def get_session(
             for m in rows
         ],
     }
+
+
+def _delete_session(db: Session, session_id: str) -> None:
+    # 消息显式删除：SQLite 默认不强制 FK，CASCADE 不可依赖（§14）
+    db.query(ChatMessage).filter(ChatMessage.session_id == session_id).delete()
+    session = db.get(ChatSession, session_id)
+    if session is not None:
+        db.delete(session)
+
+
+@router.delete("/sessions/{session_id}", status_code=204)
+def delete_session(
+    session_id: str, _: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    if db.get(ChatSession, session_id) is None:
+        raise NotFoundError(f"会话 {session_id} 不存在")
+    _delete_session(db, session_id)
+    db.commit()
+
+
+@router.post("/sessions/batch-delete")
+def batch_delete_sessions(
+    body: SessionBatchDeleteIn,
+    _: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    deleted = 0
+    for sid in body.ids:
+        if db.get(ChatSession, sid) is not None:
+            _delete_session(db, sid)
+            deleted += 1
+    db.commit()
+    return {"deleted": deleted}

@@ -33,7 +33,7 @@ sup.cite { color:var(--brand); cursor:pointer; font-size:12px; margin:0 1px; }
 footer { margin-top:48px; font-size:12px; color:var(--muted); }
 @media print { aside { display:none; } main { padding:0; } }
 </style>
-<script>{{ echarts_js }}</script>
+<script>{{ echarts_js | safe }}</script>
 </head>
 <body>
 <div class="layout">
@@ -58,11 +58,11 @@ footer { margin-top:48px; font-size:12px; color:var(--muted); }
       {% endif %}
     </section>
     {% endfor %}
-    <footer>由 zone-knowledge-buddy 生成 · 引用可点击核验原文</footer>
+    <footer>由 zone-knowledge-buddy 生成 · 引用可点击核验原文{% if charts_truncated %} · 报告超过 5MB，图表已省略{% endif %}</footer>
   </main>
 </div>
 <script>
-var CITEDATA = {{ citation_json }};
+var CITEDATA = {{ citation_json | safe }};
 document.querySelectorAll("sup.cite").forEach(function(sup){
   sup.addEventListener("click", function(){
     var key = sup.getAttribute("data-cite");
@@ -72,9 +72,13 @@ document.querySelectorAll("sup.cite").forEach(function(sup){
     box = document.createElement("div");
     box.className = "cite-detail show";
     box.setAttribute("data-key", key);
-    box.innerHTML = d && d.text
-      ? '<div class="src">来源 ' + key + (d.missing ? '（源文档已删除）' : '') + '</div>' + d.text
-      : '<div class="src">来源 ' + key + '</div>原文不可用';
+    var src = document.createElement("div");
+    src.className = "src";
+    src.textContent = "来源 " + key + (d && d.missing ? "（源文档已删除）" : "");
+    var body = document.createElement("div");
+    body.textContent = d && d.text ? d.text : "原文不可用";
+    box.appendChild(src);
+    box.appendChild(body);
     sup.closest(".content, section").appendChild(box);
   });
 });
@@ -83,14 +87,22 @@ document.querySelectorAll(".chart").forEach(function(el){
   if (window.echarts) { window.echarts.init(el).setOption(JSON.parse(opt)); }
 });
 var links = document.querySelectorAll("aside a");
-var obs = new IntersectionObserver(function(entries){
-  entries.forEach(function(e){
-    if (e.isIntersecting) {
-      links.forEach(function(a){ a.classList.toggle("active", a.getAttribute("href") === "#" + e.target.id); });
-    }
+var sections = document.querySelectorAll("section[id]");
+function updateActive(){
+  if (!sections.length) return;
+  var current = sections[0].id;
+  sections.forEach(function(sec){
+    if (sec.getBoundingClientRect().top <= window.innerHeight * 0.3) current = sec.id;
   });
-}, { rootMargin: "-30% 0px -60% 0px" });
-document.querySelectorAll("section[id]").forEach(function(sec){ obs.observe(sec); });
+  links.forEach(function(a){
+    a.classList.toggle("active", a.getAttribute("href") === "#" + current);
+  });
+}
+var obs = new IntersectionObserver(updateActive, { rootMargin: "-30% 0px -60% 0px" });
+sections.forEach(function(sec){ obs.observe(sec); });
+document.addEventListener("scroll", updateActive, { passive: true });
+window.addEventListener("resize", updateActive);
+setTimeout(updateActive, 300);  // 等图表撑开高度后再校正首屏高亮
 </script>
 </body>
 </html>

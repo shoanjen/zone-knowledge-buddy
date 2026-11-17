@@ -118,6 +118,35 @@ def test_upload_rejects_fake_pdf(wired, auth_headers):
     assert resp.status_code == 415
 
 
+def test_batch_upload_keeps_valid_files_and_reports_errors(wired, auth_headers, tmp_path):
+    """回归：批量中单个非法文件不得让已入库文档永久停在 pending。"""
+    ok = _md_file(tmp_path)
+    with ok.open("rb") as f1:
+        resp = wired.post(
+            "/api/documents/upload",
+            files=[
+                ("files", ("ok.md", f1, "text/markdown")),
+                ("files", ("bad.txt", b"hello", "text/plain")),
+            ],
+            headers=auth_headers,
+        )
+    assert resp.status_code == 202, resp.text
+    body = resp.json()
+    assert len(body["items"]) == 1
+    assert body["errors"] and body["errors"][0]["code"] == "UPLOAD_FORMAT"
+
+    doc_id = body["items"][0]["doc_id"]
+    detail = wired.get(f"/api/documents/{doc_id}", headers=auth_headers).json()
+    assert detail["status"] == "ready", detail
+    docs = wired.get("/api/documents?page_size=100", headers=auth_headers).json()["items"]
+    assert not [d for d in docs if d["status"] == "pending"]
+
+
+def test_page_size_is_validated(wired, auth_headers):
+    resp = wired.get("/api/documents?page_size=-1", headers=auth_headers)
+    assert resp.status_code == 422, resp.text
+
+
 def test_url_import_and_fail_path(wired, auth_headers, monkeypatch):
     import app.parsing.web as web_mod
     from app.core.errors import ParseError
@@ -151,6 +180,82 @@ def test_url_import_and_fail_path(wired, auth_headers, monkeypatch):
     detail = wired.get(f"/api/documents/{doc_id}", headers=auth_headers).json()
     assert detail["status"] == "ready"
     assert detail["chunk_count"] >= 1
+
+
+def test_retry_after_embed_failure_recovers(wired, auth_headers, tmp_path, monkeypatch):
+    """回归：首跑解析成功、embedding 失败置 failed 后，重试不得因块重复卡死在 parsing。
+
+    线上事故：重试重插 b1..bN 撞 UNIQUE(doc_id, block_id)，兜底 commit 再抛
+    PendingRollbackError 逃逸，文档永远停在 parsing（不可重试/不可删）。
+    """
+    import app.llm.gateway as gw_mod
+    from app.core.errors import GatewayError
+
+    def broken_embed(texts):
+        raise GatewayError("embedding 端点不可达：All connection attempts failed")
+
+    monkeypatch.setattr(gw_mod, "embed_texts", broken_embed)
+
+    p = _md_file(tmp_path)
+    with p.open("rb") as f:
+        resp = wired.post(
+            "/api/documents/upload",
+            files={"files": ("kb.md", f, "text/markdown")},
+            headers=auth_headers,
+        )
+    assert resp.status_code == 202, resp.text
+    doc_id = resp.json()["items"][0]["doc_id"]
+
+    detail = wired.get(f"/api/documents/{doc_id}", headers=auth_headers).json()
+    assert detail["status"] == "failed", detail
+    assert "embedding" in detail["error"]
+    first_block_count = detail["block_count"]
+    assert first_block_count >= 4
+
+    async def ok_embed(texts):
+        return [[0.1] * 8 for _ in texts]
+
+    monkeypatch.setattr(gw_mod, "embed_texts", ok_embed)
+    resp = wired.post(f"/api/documents/{doc_id}/retry", headers=auth_headers)
+    assert resp.status_code == 202, resp.text
+    detail = wired.get(f"/api/documents/{doc_id}", headers=auth_headers).json()
+    assert detail["status"] == "ready", detail
+    assert detail["block_count"] == first_block_count  # 块清旧重插，不重复累加
+    assert detail["chunk_count"] >= 1
+
+
+def test_startup_sweep_marks_orphans_failed(db_engine, monkeypatch):
+    """启动自愈：残留 pending/parsing 的文档与进行中任务（进程中断遗留）统一置 failed；paused 保留。"""
+    from sqlalchemy.orm import sessionmaker
+
+    import app.core.db as core_db
+    import app.main as main_mod
+    from app.models import AgentTask, Document
+
+    TestSession = sessionmaker(bind=db_engine, autoflush=False, expire_on_commit=False)
+    monkeypatch.setattr(core_db, "SessionLocal", TestSession)
+
+    with TestSession() as s:
+        s.add(Document(id="d_stuck", source_type="md", origin="x.md", status="parsing"))
+        s.add(Document(id="d_queued", source_type="md", origin="y.md", status="pending"))
+        s.add(Document(id="d_ok", source_type="md", origin="z.md", status="ready"))
+        s.add(AgentTask(id="t_run", type="note.generate", status="running"))
+        s.add(AgentTask(id="t_plan", type="note.generate", status="planning"))
+        s.add(AgentTask(id="t_paused", type="note.generate", status="paused"))
+        s.add(AgentTask(id="t_done", type="note.generate", status="done"))
+        s.commit()
+
+    main_mod._recover_orphans()
+
+    with TestSession() as s:
+        assert s.get(Document, "d_stuck").status == "failed"
+        assert s.get(Document, "d_queued").status == "failed"
+        assert s.get(Document, "d_ok").status == "ready"  # ready/failed 不受影响
+        assert s.get(AgentTask, "t_run").status == "failed"
+        assert s.get(AgentTask, "t_plan").status == "failed"
+        # paused 草稿已生成，确认/拒绝不依赖 LLM，重启后保留
+        assert s.get(AgentTask, "t_paused").status == "paused"
+        assert s.get(AgentTask, "t_done").status == "done"
 
 
 def test_delete_cascade_and_broken_citation(wired, auth_headers, tmp_path, db_session):

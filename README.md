@@ -4,6 +4,34 @@
 
 技术栈：FastAPI + SQLAlchemy(SQLite) + ChromaDB（后端）· Vue 3 + Vite + Element Plus + Pinia（前端）。
 
+## 页面预览
+
+> 以下为本地真实运行截图（视口 1440×900），原图位于 `docs/screenshots/`。
+
+| 登录 · 默认账号 `admin / admin123` | 工作台 · 「知识库 → 问答 → 产出」三步导览，拖拽上传 / 网页导入，最近产出 |
+|:--:|:--:|
+| ![登录页](docs/screenshots/01-login.png) | ![工作台](docs/screenshots/02-workbench.png) |
+
+| 文档库 · 按来源类型筛选，卡片 / 列表视图，解析状态与块数 | 文档详情 · 解析后的分块正文，表格独立成块 |
+|:--:|:--:|
+| ![文档库](docs/screenshots/03-documents.png) | ![文档详情](docs/screenshots/04-document-detail.png) |
+
+| 知识问答 · 流式 Markdown 回答（含表格），结论后带 `[doc_id:block_id]` 引用标记 | 引用回溯 · 点击引用标记查看来源文档与原文片段 |
+|:--:|:--:|
+| ![问答会话](docs/screenshots/05-chat-session.png) | ![引用弹窗](docs/screenshots/06-chat-citation.png) |
+
+| 产出 · 笔记 / 报告 / 播客三类统一管理，支持标题与标签检索 | 笔记详情 · 摘要、表格、要点逐句带引用，可编辑与打标签 |
+|:--:|:--:|
+| ![产出](docs/screenshots/07-assets.png) | ![笔记详情](docs/screenshots/08-note-detail.png) |
+
+| 报告预览 · 自包含 HTML，左侧目录锚点 + 正文引用角标，可直接下载 | 任务中心 · 任务状态 / 类型 / 模型 / 错误一览，支持筛选 |
+|:--:|:--:|
+| ![报告预览](docs/screenshots/09-report-preview.png) | ![任务中心](docs/screenshots/10-tasks.png) |
+
+| 任务详情 · Agent 执行时间线（思考 → 工具调用 → 观察）逐步留痕 | 设置 · 模型供应商（云端 GLM / 本地 Ollama / LM Studio）测试与切换 |
+|:--:|:--:|
+| ![任务时间线](docs/screenshots/11-task-timeline.png) | ![设置](docs/screenshots/12-settings.png) |
+
 ## 目录结构
 
 ```
@@ -11,14 +39,16 @@ backend/    FastAPI 应用（app/ 源码 + tests/ 单元与集成测试）
 frontend/   Vue 3 前端（views/stores/api/composables）
 data/       运行期数据（gitignore）：sqlite / chroma / storage
 reports_output/  生成的自包含报告 HTML（gitignore）
-docs/       需求、总体设计、实现方案、全功能开发规格
+docs/       需求、总体设计、实现方案、全功能开发规格、测试报告、本地部署与运行指南；screenshots/ 页面预览截图
 ```
 
 ## 环境要求
 
-- Python ≥ 3.11（后端用 [uv](https://docs.astral.sh/uv/) 管理依赖，venv 直跑亦可）
+> 完整的环境准备、分步部署、验证与常见问题排查，见 **[docs/07-本地部署与运行指南.md](docs/07-本地部署与运行指南.md)**。下面是摘要。
+
+- Python ≥ 3.11 且 < 3.13（后端用 [uv](https://docs.astral.sh/uv/) 管理依赖；不用 uv 可 `pip install -r backend/requirements.txt`）
 - Node.js ≥ 20（前端构建）
-- 可选：本地 Ollama（`qwen3:4b` 生成兜底 + `bge-m3` 向量，向量模型必需——问答/检索/笔记/报告均依赖）
+- 本地 Ollama：`bge-m3` 向量模型**必需**（问答/检索/笔记/报告均依赖）；`qwen3:4b` 可选，作为无云端 Key 时的本地生成方案
 
 ## 快速启动
 

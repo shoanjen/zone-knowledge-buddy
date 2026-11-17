@@ -9,6 +9,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
+from starlette.background import BackgroundTask
 
 from app.api.deps import get_current_user
 from app.core.config import get_settings
@@ -52,5 +53,6 @@ def export(
         zip_path,
         media_type="application/zip",
         filename=zip_path.name,
-        background=None,
-    )  # 注：tmp 清理由系统临时目录机制兜底（毕设规模可接受）
+        # 响应发送完毕后清理临时目录，避免每次导出都残留一份全量备份
+        background=BackgroundTask(_cleanup),
+    )

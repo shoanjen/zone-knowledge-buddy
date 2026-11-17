@@ -31,13 +31,18 @@ def parse_excel(path: Path) -> ParsedDoc:
 
         # 表头推断：首行非空占比 ≥60% 且行数 >1
         first = rows[0]
-        non_empty_ratio = sum(1 for c in first if str(c).strip()) / max(len(first), 1)
+        non_empty_ratio = sum(
+            1 for c in first if c is not None and str(c).strip()
+        ) / max(len(first), 1)
         header_like = len(rows) > 1 and non_empty_ratio >= 0.6
         data = [[str(c) if c is not None else "" for c in r] for r in rows]
+        if not header_like:
+            # 无表头：补一行系统列名，避免 table_to_markdown 把首行数据当表头而丢失
+            width = max((len(r) for r in data), default=0)
+            data = [[f"列{i + 1}" for i in range(width)], *data]
         caption = ws.title
         blocks.append(IRBlock(type="table", data=data, caption=caption))
-        if not header_like and blocks:
-            # 无表头：整体视为数据，caption 注明
+        if not header_like:
             blocks[-1].caption = f"{caption}（未识别表头）"
 
     wb.close()
@@ -46,7 +51,8 @@ def parse_excel(path: Path) -> ParsedDoc:
 
     return ParsedDoc(
         meta=IRMeta(
-            title=path.stem,
+            # path 是系统存储名 original.xlsx，不能作为标题；由 dispatcher 回退到上传文件名
+            title=None,
             pages_or_sheets=sheet_count,
             parse_quality="low" if truncated else "high",
             low_reason="oversize" if truncated else None,

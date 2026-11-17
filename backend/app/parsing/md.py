@@ -68,7 +68,8 @@ def parse_md(path: Path) -> ParsedDoc:
             continue
         i += 1
 
-    if not any(b.type in ("heading", "paragraph") for b in blocks):
+    # 只要存在任意内容块（标题/段落/表格）就不算空；纯表格 MD 同样有效。
+    if not any(b.type in ("heading", "paragraph", "table") for b in blocks):
         raise ParseError("MD 解析失败：无有效内容（empty）")
 
     return ParsedDoc(

@@ -16,10 +16,12 @@ const routes = [
     name: 'document-detail',
     component: () => import('../views/DocumentDetailView.vue'),
   },
-  { path: '/notes', name: 'notes', component: () => import('../views/NotesView.vue') },
+  { path: '/assets', name: 'assets', component: () => import('../views/AssetsView.vue') },
+  // 旧列表入口并入「产出」双 Tab；详情路由保留
+  { path: '/notes', redirect: '/assets?tab=notes' },
   { path: '/notes/:id', name: 'note-detail', component: () => import('../views/NoteDetailView.vue') },
   { path: '/chat', name: 'chat', component: () => import('../views/ChatView.vue') },
-  { path: '/reports', name: 'reports', component: () => import('../views/ReportsView.vue') },
+  { path: '/reports', redirect: '/assets?tab=reports' },
   {
     path: '/reports/:id/preview',
     name: 'report-preview',

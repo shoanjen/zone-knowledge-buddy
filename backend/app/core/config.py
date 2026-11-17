@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     embedding_model: str = "bge-m3"
     kb_max_upload_mb: int = 100
     kb_max_upload_files: int = 20
-    kb_cors_origin: str = "http://localhost:5173"
+    kb_cors_origin: str = "http://localhost:5201"
 
     # 云端 GLM 预填（可选；推荐在设置页配置，key 加密落库）
     glm_base_url: str = "https://open.bigmodel.cn/api/paas/v4"
@@ -49,6 +49,11 @@ class Settings(BaseSettings):
     def reports_dir(self) -> Path:
         # data/ 位于仓库根时，reports_output 与其同级（规格 §2.1）
         return self.data_dir.parent / "reports_output"
+
+    @property
+    def podcasts_dir(self) -> Path:
+        # 音频属于用户数据，随 data/ 一起存放
+        return self.data_dir / "podcasts"
 
     @property
     def is_dev(self) -> bool:

@@ -34,9 +34,14 @@ def parse_word(path: Path) -> ParsedDoc:
             if not text:
                 continue
             style = (item.style.name if item.style is not None else "") or ""
-            if style.startswith("Heading") or style.startswith("标题"):
-                digits = "".join(ch for ch in style if ch.isdigit())
-                level = int(digits) if digits.isdigit() else 2
+            # "Title"/"标题" 是文档主标题样式（add_heading(level=0)），无层级数字
+            is_title_style = style in ("Title", "标题")
+            if is_title_style or style.startswith("Heading") or style.startswith("标题"):
+                if is_title_style:
+                    level = 1
+                else:
+                    digits = "".join(ch for ch in style if ch.isdigit())
+                    level = int(digits) if digits.isdigit() else 2
                 blocks.append(IRBlock(type="heading", level=min(level, 6), text=text))
             else:
                 blocks.append(IRBlock(type="paragraph", text=text))

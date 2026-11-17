@@ -1,18 +1,18 @@
 <script setup>
-// 规格：Agent 执行过程时间线，四类 step_type 分色节点
+// 规格：Agent 执行过程时间线，四类 step_type 分色节点（降饱和）
 defineProps({
   steps: { type: Array, default: () => [] },
 })
 
 const TYPE_COLOR = {
-  thought: '#409eff',
-  tool: '#9a6fe0',
-  observation: '#67c23a',
-  reflection: '#e6a23c',
+  thought: 'var(--accent)',
+  tool: '#7c6cb0',
+  observation: 'var(--success)',
+  reflection: 'var(--warn)',
 }
 
 function colorOf(step) {
-  return TYPE_COLOR[step?.step_type] || '#c0c4cc'
+  return TYPE_COLOR[step?.step_type] || 'var(--faint)'
 }
 
 function contentOf(step) {
@@ -26,9 +26,9 @@ function titleOf(step) {
     case 'thought':
       return '思考'
     case 'tool':
-      return `工具调用：${c.tool ?? '未知'}`
+      return `工具调用 · ${c.tool ?? '未知'}`
     case 'observation':
-      return `观察：${c.tool ?? '未知'}`
+      return `观察 · ${c.tool ?? c.phase ?? '结果'}`
     case 'reflection':
       return '反思'
     default:
@@ -77,17 +77,19 @@ function formatTime(value) {
       v-for="(step, idx) in steps"
       :key="step.seq ?? idx"
       :color="colorOf(step)"
-      :timestamp="formatTime(step.created_at)"
-      placement="top"
     >
-      <div class="step-card">
-        <div class="step-title" :style="{ color: colorOf(step) }">{{ titleOf(step) }}</div>
+      <div class="step-item">
+        <div class="step-head">
+          <span class="step-title">{{ titleOf(step) }}</span>
+          <span class="step-time tnum">{{ formatTime(step.created_at) }}</span>
+        </div>
         <div class="step-body">
           <template v-if="step.step_type === 'thought'">
             <p v-if="thoughtText(step)" class="step-text">{{ thoughtText(step) }}</p>
             <ol v-if="planSteps(step).length" class="plan-list">
               <li v-for="(p, i) in planSteps(step)" :key="i" class="plan-item">
-                <span class="plan-no">{{ p.no ?? i + 1 }}.</span>{{ p.description }}
+                <span class="tnum plan-no">{{ p.no ?? i + 1 }}.</span>
+                <span class="plan-desc">{{ p.description }}</span>
               </li>
             </ol>
             <pre v-if="!thoughtText(step) && !planSteps(step).length" class="step-pre">{{ pretty(step.content) }}</pre>
@@ -116,47 +118,81 @@ function formatTime(value) {
   padding-left: 4px;
 }
 
-.step-card {
-  padding-bottom: 4px;
+.step-item {
+  min-width: 0;
+}
+
+.step-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
 }
 
 .step-title {
-  font-size: 14px;
+  min-width: 0;
+  font-size: 12.5px;
   font-weight: 600;
-  margin-bottom: 6px;
+  color: var(--fg-strong);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.step-time {
+  flex-shrink: 0;
+  font-size: 11.5px;
+  color: var(--muted);
 }
 
 .step-text {
   margin: 0;
-  font-size: 13px;
+  font-size: 12.5px;
   line-height: 1.7;
-  color: #303133;
+  color: var(--fg);
   white-space: pre-wrap;
   word-break: break-word;
 }
 
 .plan-list {
-  margin: 0;
-  padding-left: 20px;
-  font-size: 13px;
-  line-height: 1.8;
-  color: #303133;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
-.plan-item .plan-no {
+.plan-item {
+  display: flex;
+  gap: 6px;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--fg);
+}
+
+.plan-no {
+  flex-shrink: 0;
   font-weight: 600;
-  margin-right: 4px;
+  color: var(--muted);
+}
+
+.plan-desc {
+  min-width: 0;
+  word-break: break-word;
 }
 
 .step-pre {
   margin: 0;
-  padding: 8px 10px;
-  background: #f5f7fa;
+  padding: 10px 12px;
+  background: var(--surface-2);
   border-radius: 6px;
-  font-size: 12px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
   line-height: 1.6;
-  color: #606266;
-  max-height: 200px;
+  color: var(--fg);
+  max-height: 220px;
   overflow: auto;
   white-space: pre-wrap;
   word-break: break-all;

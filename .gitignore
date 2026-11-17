@@ -21,6 +21,10 @@ frontend/dist/
 # 系统
 .DS_Store
 
+# 本机 IDE 配置
+.idea/
+.trae/
+
 # AutoClaw 运行目录与本地 skill 软链
 .zwork/
 .agents/
